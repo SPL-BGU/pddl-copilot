@@ -1,2 +1,2 @@
-# llm_heuristic_search_agent
-A Python agent leveraging LLMs and heuristic search for MAPF and AI planning.
+# LLM Heuristic Search Agent
+A Python LLM agent using MCP tools to solve AI planning problems.

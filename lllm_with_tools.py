@@ -6,11 +6,11 @@ from langgraph.graph import START, StateGraph
 from langgraph.prebuilt import ToolNode
 
 
-from solvers_server import add, multiply
+from solvers_server import add, multiply, numeric_planner
 
 
 def call_ollama(prompt):
-    tools = [add, multiply]
+    tools = [add, multiply, numeric_planner]
     llm = ChatOllama(model="llama3.1", temperature=0)
     llm_with_tools = llm.bind_tools(tools, tool_choice="any")
 

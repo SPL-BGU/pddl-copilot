@@ -1,4 +1,5 @@
 import gradio as gr
+import ast
 
 from lllm_with_tools import call_ollama
 
@@ -21,16 +22,23 @@ custom_css = """
 # GRADIO functions
 # ---------------------------- #
 def solve(input_domain, input_problem):
-    # Example values for the output
-    print(input_domain, input_problem)
-    chosen_algorithm, solution, explanation = call_ollama("Add 3 and 4")
+    with open(input_domain, "r") as file:
+        domain_content = file.read()
+    with open(input_problem, "r") as file:
+        problem_content = file.read()
+    chosen_algorithm, tool_result, explanation = call_ollama(
+        f"""What tool should I use to solve the following planning problem?
+        the path to the domain is: {input_domain}
+        the path to the problem is: {input_problem}
+        Here is the content of the domain and problem files:
+        {domain_content} {problem_content}"""
+    )
 
-    # chosen_algorithm = "A*"
-    # explanation = "Found shortest path using A* algorithm."
-    # solution = "Agent1: (1,1)->(2,2), Agent2: (3,3)->(4,4)"
+    tool_result = ast.literal_eval(tool_result)
+    solution = tool_result[0]
+    runtime = tool_result[1]
+    sol_len = len(solution)
 
-    sol_len = 5
-    runtime = 0.15
     # solution_video_path = (
     #     "path_to_video.mp4"  # must be a path or URL accessible by Gradio
     # )
@@ -50,12 +58,12 @@ def solve(input_domain, input_problem):
 # ---------------------------- #
 with gr.Blocks(css=custom_css) as demo:
     # ARRANGEMENTS
-    gr.Markdown("# LLM Assistant for MAPF", elem_id="title")
+    gr.Markdown("# LLM Heuristic Search Agent", elem_id="title")
     with gr.Row():
         with gr.Column(scale=10):
             gr.Markdown("## Input Data")
-            input_domain = gr.File(label="Drop a `.pddl` file")
-            input_problem = gr.File(label="Drop a `.pddl` file")
+            input_domain = gr.File(label="Drop domain `.pddl` file")
+            input_problem = gr.File(label="Drop problem `.pddl` file")
             solve_btn = gr.Button("Solve", variant="primary")
             # gr.Markdown("Example inputs:")
             # ex1_btn = gr.Button("Example 1")
