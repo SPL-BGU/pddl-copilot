@@ -22,7 +22,7 @@ def call_ollama(prompt):
             "Never respond with free-form text. Tool use is mandatory.\n"
             "Always rely on tool outputs — do not generate a plan or runtime yourself.\n"
             "Select the appropriate tool based on the structure of the problem.\n"
-            "If the selected tool returns no solution, treat the problem as unsolvable and return an empty plan.\n"
+            "If the selected tool returns empty list, treat the problem as unsolvable and return an empty plan.\n"
             "Conclude by explaining the reasoning behind the tool selection."
         )
     )
