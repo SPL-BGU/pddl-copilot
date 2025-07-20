@@ -6,20 +6,24 @@ from langgraph.graph import START, StateGraph
 from langgraph.prebuilt import ToolNode
 
 
-from solvers_server import add, multiply, numeric_planner
+from solvers_server import classic_planner, numeric_planner
 
 
 def call_ollama(prompt):
-    tools = [add, multiply, numeric_planner]
-    llm = ChatOllama(model="llama3.1", temperature=0)
+    tools = [classic_planner, numeric_planner]
+    llm = ChatOllama(model="llama3.1", temperature=0.0)
     llm_with_tools = llm.bind_tools(tools, tool_choice="any")
 
     # System message
     sys_msg = SystemMessage(
         content=(
-            "You are a MAPF planner. "
-            "Given a problem description, you must always call exactly one of the available solver tools. "
-            "Then u need to explain why did u choose this tool over the others."
+            "You are a PDDL planner operating within a tool-based planning system.\n"
+            "Your task is to compute a plan for a given planning problem using one of the available solver tools.\n"
+            "Never respond with free-form text. Tool use is mandatory.\n"
+            "Always rely on tool outputs — do not generate a plan or runtime yourself.\n"
+            "Select the appropriate tool based on the structure of the problem.\n"
+            "If the selected tool returns no solution, treat the problem as unsolvable and return an empty plan.\n"
+            "Conclude by explaining the reasoning behind the tool selection."
         )
     )
 
