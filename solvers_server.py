@@ -1,5 +1,6 @@
 from mcp.server.fastmcp import FastMCP
-from planning import MetricFF, FastDownward
+from planning import MetricFF, FastDownward, run_validate_syntax
+from pathlib import Path
 import time
 
 mcp = FastMCP("Planning")
@@ -73,6 +74,47 @@ def classic_planner(domain: str, problem: str) -> tuple:
     plan = FastDownward().create_plan(domain, problem)
     t2 = time.time()
     return (plan, t2 - t1)
+
+
+@mcp.tool()
+def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> str:
+    """
+    name: validate_pddl_syntax
+    description: |
+        Validates the syntax and basic semantics of a PDDL domain file, and optionally a PDDL problem file,
+        using the VAL Validate tool. It checks for errors such as missing predicates, type mismatches, and
+        malformed actions. If a problem file is provided, it will also validate consistency between domain
+        and problem files.
+    parameters:
+    - name: domain
+      type: string
+      description: |
+        File path to the PDDL domain definition file containing predicates, types, and action definitions.
+    - name: problem
+      type: string
+      description: |
+        Optional File path to the PDDL problem definition file specifying objects, initial state, and goals.
+        If omitted, only the domain file is validated.
+    - name: plan
+      type: string
+      description: |
+        Optional File path to the action sequance that should be validated against the domain and problem.
+        If omitted, only the domain and problem files are validated.
+    returns:
+      type: string
+      description: |
+        The output from the VAL Validate tool, including any syntax or semantic errors found during validation,
+        warnings, or confirmation of validity.
+    """
+
+    if problem is not None:
+        problem = Path(problem).absolute()
+
+    if plan is not None:
+        plan = Path(plan).absolute()
+
+    result = run_validate_syntax(Path(domain).absolute(), problem, plan)
+    return result
 
 
 if __name__ == "__main__":

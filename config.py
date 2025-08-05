@@ -13,3 +13,4 @@ class ErrorFlag(Enum):
 PROJECT_PATH = ".."
 METRIC_FF_PATH = f"{PROJECT_PATH}/METRIC_FF"
 FastDownward_PATH = f"{PROJECT_PATH}/FastDownward"
+VALIDATOR_DIRECTORY = f"{PROJECT_PATH}/VAL"
