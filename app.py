@@ -59,16 +59,21 @@ def start(prompt, input_domain=None, input_problem=None, input_plan=None):
 
             prompt += f"```{content}```\n"
 
-    chosen_algorithm, tool_result, explanation = ollama_request(prompt=prompt)
+        chosen_algorithm, tool_result, explanation = ollama_request(prompt=prompt)
+    else:
+        chosen_algorithm, tool_result, explanation = ollama_request(
+            prompt=prompt, chat_focus=True
+        )
 
     try:
         tool_result = ast.literal_eval(tool_result)
         solution = tool_result[0]
         runtime = tool_result[1]
+        sol_len = len(solution)
     except:
         solution = tool_result
         runtime = None
-    sol_len = len(solution)
+        sol_len = None
 
     # solution_video_path = (
     #     "path_to_video.mp4"  # must be a path or URL accessible by Gradio
@@ -88,44 +93,36 @@ def start(prompt, input_domain=None, input_problem=None, input_plan=None):
 # main blocks
 # ---------------------------- #
 with gr.Blocks(css=custom_css) as demo:
-    with gr.Tabs():
+    gr.Markdown("# PDDL Planning Copilot", elem_id="title")
+    with gr.Row():
+        with gr.Column(scale=10):
+            gr.Markdown("## Input Data")
+            prompt = gr.Textbox(label="Describe the task")
+            input_domain = gr.File(label="Drop domain `.pddl` file")
+            input_problem = gr.File(label="Drop problem `.pddl` file")
+            input_plan = gr.File(label="Drop plan `.solution` file")
+            run_llm = gr.Button("Run", variant="primary")
 
-        with gr.Tab("Autonomous"):
-            # ARRANGEMENTS
-            gr.Markdown("# PDDL Planning Copilot", elem_id="title")
+        with gr.Column(scale=12):
+            gr.Markdown("## Output Result")
+            output_alg = gr.Textbox(label="Chosen algorithm:", interactive=False)
+            output_expl = gr.Textbox(label="Explanation:", interactive=False)
+            output_sol = gr.Textbox(label="Solution:", interactive=False)
             with gr.Row():
-                with gr.Column(scale=10):
-                    gr.Markdown("## Input Data")
-                    prompt = gr.Textbox(label="Describe the task")
-                    input_domain = gr.File(label="Drop domain `.pddl` file")
-                    input_problem = gr.File(label="Drop problem `.pddl` file")
-                    input_plan = gr.File(label="Drop plan `.solution` file")
-                    run_llm = gr.Button("Run", variant="primary")
+                output_sol_len = gr.Number(label="Solution Length:", interactive=False)
+                output_rt = gr.Number(label="Runtime:", interactive=False)
 
-                with gr.Column(scale=12):
-                    gr.Markdown("## Output Result")
-                    output_alg = gr.Textbox(
-                        label="Chosen algorithm:", interactive=False
-                    )
-                    output_expl = gr.Textbox(label="Explanation:", interactive=False)
-                    output_sol = gr.Textbox(label="Solution:", interactive=False)
-                    with gr.Row():
-                        output_sol_len = gr.Number(
-                            label="Solution Length:", interactive=False
-                        )
-                        output_rt = gr.Number(label="Runtime:", interactive=False)
-
-                run_llm.click(
-                    fn=start,
-                    inputs=[prompt, input_domain, input_problem, input_plan],
-                    outputs=[
-                        output_alg,
-                        output_expl,
-                        output_sol,
-                        output_sol_len,
-                        output_rt,
-                    ],
-                )
+        run_llm.click(
+            fn=start,
+            inputs=[prompt, input_domain, input_problem, input_plan],
+            outputs=[
+                output_alg,
+                output_expl,
+                output_sol,
+                output_sol_len,
+                output_rt,
+            ],
+        )
 
 
 # ---------------------------- #

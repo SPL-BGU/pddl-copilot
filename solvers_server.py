@@ -77,6 +77,35 @@ def classic_planner(domain: str, problem: str) -> tuple:
 
 
 @mcp.tool()
+def save_plan(domain: str, plan: list) -> str:
+    """
+    name: save_plan
+    description: |
+        Saves the computed plan to a file.
+        Accepts the domain file path and the computed plan as a list of actions.
+    parameters:
+    - name: domain
+      type: string
+      description: |
+        File path to the PDDL domain definition file, used to determine the directory for saving the plan.
+    - name: plan
+      type: list
+      description: |
+        The computed plan as a list of action strings to be saved.
+    returns:
+      type: string
+      description: |
+        The file path where the plan has been saved.
+    """
+    filename = f"{Path(domain).absolute().parent}/temp_plan.solution"
+    with open(filename, "w") as file:
+        for item in plan:
+            file.write(str(item) + "\n")
+
+    return filename
+
+
+@mcp.tool()
 def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> str:
     """
     name: validate_pddl_syntax
