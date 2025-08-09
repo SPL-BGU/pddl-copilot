@@ -13,6 +13,7 @@ from solvers_server import (
     numeric_planner,
     validate_pddl_syntax,
     save_plan,
+    get_state_transition,
 )
 
 
@@ -20,7 +21,7 @@ def get_llm():
 
     model = "qwen3:4b"
 
-    return ChatOllama(model=model, temperature=0.0)
+    return ChatOllama(model=model, temperature=0.0, base_url="http://127.0.0.1:1234")
 
 
 def ollama_with_tools(prompt, sys_msg, tools):
@@ -80,7 +81,13 @@ def ollama_with_tools(prompt, sys_msg, tools):
 
 
 def ollama_request(prompt, chat_focus=False):
-    tools = [classic_planner, numeric_planner, validate_pddl_syntax, save_plan]
+    tools = [
+        classic_planner,
+        numeric_planner,
+        validate_pddl_syntax,
+        save_plan,
+        get_state_transition,
+    ]
 
     if chat_focus:
         content = (

@@ -1,5 +1,5 @@
 from mcp.server.fastmcp import FastMCP
-from planning import MetricFF, FastDownward, run_validate_syntax
+from planning import MetricFF, FastDownward, run_validate_syntax, create_trajectory
 from pathlib import Path
 import time
 
@@ -144,6 +144,34 @@ def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> 
 
     result = run_validate_syntax(Path(domain).absolute(), problem, plan)
     return result
+
+
+@mcp.tool()
+def get_state_transition(domain: str, problem: str, plan: str) -> list[str]:
+    """
+    name: get_state_transition
+    description: |
+        Creates a trajectory from the given domain, problem, and solution files.
+        Returns a list of state transitions in the trajectory, where each state is represented as a string.
+    parameters:
+    - name: domain
+      type: string
+      description: |
+        File path to the PDDL domain definition file.
+    - name: problem
+      type: string
+      description: |
+        File path to the PDDL problem definition file.
+    - name: plan
+      type: string
+      description: |
+        File path to the solution file containing the plan.
+    returns:
+      type: list
+      description: |
+        A list of state transitions in the trajectory, where each state is represented as a string.
+    """
+    return create_trajectory(Path(domain), Path(problem), Path(plan))
 
 
 if __name__ == "__main__":

@@ -67,8 +67,12 @@ def start(prompt, input_domain=None, input_problem=None, input_plan=None):
 
     try:
         tool_result = ast.literal_eval(tool_result)
-        solution = tool_result[0]
-        runtime = tool_result[1]
+        if len(tool_result) == 2:
+            solution = tool_result[0]
+            runtime = tool_result[1]
+        else:
+            solution = tool_result
+            runtime = None
         sol_len = len(solution)
     except:
         solution = tool_result
