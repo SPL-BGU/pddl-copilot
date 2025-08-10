@@ -21,7 +21,7 @@ def get_llm():
 
     model = "qwen3:4b"
 
-    return ChatOllama(model=model, temperature=0.0, base_url="http://127.0.0.1:1234")
+    return ChatOllama(model=model, temperature=0.0)
 
 
 def ollama_with_tools(prompt, sys_msg, tools):
@@ -67,17 +67,18 @@ def ollama_with_tools(prompt, sys_msg, tools):
     messages = [HumanMessage(content=prompt)]
     result = react_graph.invoke({"messages": messages}, config)
 
-    tool_name = result["messages"][-2].name  # tool name
-    tool_output = result["messages"][-2].content  # tool result
-    tool_reason = result["messages"][-1].content  # why
+    last_msg = result["messages"][-1].content  # Conclusion message
 
-    print(
-        f"Tool used: {tool_name}"
-        f"\nTool result: {tool_output}"
-        f"\nReasoning: {tool_reason}"
-    )
+    # Extract tool names and outputs
+    tools_used = []
+    tools_output = []
+    for msg in result["messages"]:
+        tool_name = msg.name
+        if tool_name:
+            tools_used.append(tool_name)
+            tools_output.append(msg.content)
 
-    return tool_name, tool_output, tool_reason
+    return last_msg, tools_used, tools_output
 
 
 def ollama_request(prompt, chat_focus=False):
