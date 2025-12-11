@@ -31,4 +31,12 @@ python app.py
 
 # Citations
 
-SOON
+If you find our work interesting or the repo useful, please consider citing [this paper](https://arxiv.org/abs/2509.12987):
+```
+@article{benyamin2025toward,
+  title={Toward PDDL Planning Copilot},
+  author={Benyamin, Yarin and Mordoch, Argaman and Shperberg, Shahaf S and Stern, Roni},
+  journal={arXiv preprint arXiv:2509.12987},
+  year={2025}
+}
+```
