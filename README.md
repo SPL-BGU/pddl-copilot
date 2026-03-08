@@ -1,5 +1,11 @@
 <h1 align="center">Toward PDDL Planning Copilot</h2>
 <p align="center">
+<a href="https://glama.ai/mcp/servers/SPL-BGU/planning-copilot">
+<img alt="Glama MCP Server" src="https://img.shields.io/badge/Glama-MCP%20Server-blue">
+</a>
+<a href="https://arxiv.org/abs/2509.12987">
+<img alt="arXiv Paper" src="https://img.shields.io/badge/arXiv-2509.12987-B31B1B.svg">
+</a>
 <a href="https://www.python.org/downloads/release/python-31012/"><img alt="Python Version" src="https://img.shields.io/badge/python-3.10-blue"></a>
 <a href="https://github.com/psf/black"><img alt="Code style: black" src="https://img.shields.io/badge/code%20style-black-000000.svg"></a>
 </p>
