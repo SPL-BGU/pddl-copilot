@@ -1,12 +1,8 @@
 name: Build and publish Docker image
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'docker/Dockerfile'
-      - 'docker/solvers_server_wrapper.py'
   workflow_dispatch:
+    branches: [main]
 
 env:
   REGISTRY: ghcr.io
@@ -14,6 +10,7 @@ env:
 jobs:
   build-amd64:
     runs-on: ubuntu-latest
+    environment: deploy-docker-image
     permissions:
       contents: read
       packages: write
@@ -46,6 +43,7 @@ jobs:
 
   build-arm64:
     runs-on: ubuntu-24.04-arm
+    environment: deploy-docker-image
     permissions:
       contents: read
       packages: write
