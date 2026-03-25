@@ -1,0 +1,8 @@
+# Ensure shell scripts always use LF line endings (critical for Linux/macOS/WSL)
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.py text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
