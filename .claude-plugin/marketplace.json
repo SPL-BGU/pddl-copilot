@@ -12,7 +12,7 @@
       },
       "license": "MIT",
       "version": "1.0.0",
-      "source": "plugins/pddl-planning-copilot",
+      "source": "./plugins/pddl-planning-copilot",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
