@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__pddl-planner__classic_planner",
+      "mcp__pddl-planner__numeric_planner",
+      "mcp__pddl-planner__validate_pddl_syntax",
+      "mcp__pddl-planner__save_plan",
+      "mcp__pddl-planner__get_state_transition"
+    ]
+  }
+}

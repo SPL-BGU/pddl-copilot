@@ -1,0 +1,10 @@
+services:
+  pddl-sandbox:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: pddl-sandbox:latest
+    stdin_open: true
+    volumes:
+      - ${PWD:-.}:/workspace
+    working_dir: /workspace
