@@ -12,6 +12,12 @@ This repository is a Claude Code plugin marketplace. Each plugin lives in its ow
 
 - **pddl-planning-copilot** (`plugins/pddl-planning-copilot/`) — PDDL planning, validation, and simulation using Fast Downward, Metric-FF, and VAL in Docker
 
+## Ollama MCP Bridge
+
+`ollama_mcp_bridge.py` — root-level CLI tool that connects Ollama models to marketplace plugins via MCP. Not a plugin itself. Reads `marketplace.json` to discover plugins dynamically.
+
+Run: `python3 ollama_mcp_bridge.py` (deps: `pip3 install -r requirements-bridge.txt`)
+
 ## Two-Tier Skill System
 
 This repo has two kinds of skills. They must NEVER be mixed.
