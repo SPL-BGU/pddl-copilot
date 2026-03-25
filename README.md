@@ -13,11 +13,54 @@ Based on [arXiv:2509.12987](https://arxiv.org/abs/2509.12987).
 
 ### Install as a plugin (recommended)
 
-```bash
-claude install-plugin https://github.com/SPL-BGU/pddl-copilot.git
-```
+1. Start a Claude Code session:
+   ```bash
+   claude
+   ```
 
-Then start Claude Code from any project directory — the plugin is available globally.
+2. Inside the session, type `/plugins` to open the plugins view:
+   ```
+   /plugins
+   ```
+   This opens the **Plugins Manager** screen with three tabs:
+
+   ```
+   ┌─────────────────────────────────────────────────┐
+   │  Installed    Available    Marketplace Search  → │
+   └─────────────────────────────────────────────────┘
+   ```
+
+3. Press the **right arrow key** (→) twice to navigate to the **Marketplace Search** tab:
+
+   ```
+   ┌─────────────────────────────────────────────────┐
+   │  Installed    Available  ▸ Marketplace Search    │
+   ├─────────────────────────────────────────────────┤
+   │  Search: _                                       │
+   │                                                  │
+   │  Enter a GitHub owner/repo to search             │
+   └─────────────────────────────────────────────────┘
+   ```
+
+4. Type the marketplace path and press **Enter**:
+   ```
+   SPL-BGU/pddl-copilot
+   ```
+
+5. Select **pddl-planning-copilot** from the results list and confirm installation:
+
+   ```
+   ┌─────────────────────────────────────────────────┐
+   │  Marketplace Search                              │
+   ├─────────────────────────────────────────────────┤
+   │  ▸ pddl-planning-copilot                        │
+   │    PDDL planning, validation & simulation tools  │
+   └─────────────────────────────────────────────────┘
+   ```
+
+6. Press **Escape** to exit the plugins view and return to your session.
+
+The plugin is now installed globally — start Claude Code from any project directory to use it.
 
 ### Alternative: Clone and run directly
 
