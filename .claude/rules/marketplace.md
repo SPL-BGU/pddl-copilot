@@ -17,8 +17,8 @@ paths:
 5. **Independent versioning**: Each plugin has its own version in its marketplace entry. Plugins do not share version numbers.
 
 ### Naming conventions
-- Plugin directory: `plugins/<kebab-case-name>/` (e.g., `plugins/pddl-planning-copilot/`)
-- MCP server name: descriptive, kebab-case (e.g., `pddl-planner`)
+- Plugin directory: `plugins/<kebab-case-name>/` (e.g., `plugins/pddl-solver/`)
+- MCP server name: descriptive, kebab-case (e.g., `pddl-solver`)
 - Skill names: kebab-case (e.g., `pddl-planning`, `pddl-validation`)
 
 ### Scope boundaries
@@ -37,13 +37,17 @@ paths:
 5. Create `.claude/settings.json` with tool permissions
 6. Create `scripts/launch-server.sh` appropriate for the chosen tier
 7. Create the MCP server script (Python/Node)
-8. **(Tier 3 only)** Create `docker/Dockerfile` and `docker/verify.sh`
+8. **(Tier 3 only)** Use the shared `docker/Dockerfile` image; create `tests/verify.sh`
 9. Create a verification/test script that exercises all MCP tools
 10. Create at least one skill under `skills/`
 11. Add entry to `.claude-plugin/marketplace.json`
-12. Update root `README.md` available plugins section
+12. Add matching entry to `.cursor-plugin/marketplace.json`
+13. Update `antigravity_mcp.json` with the new plugin's server entry
+14. Verify auto-discovery: `bash install_marketplace.sh`
+15. Update root `README.md` and `CLAUDE.md` available plugins sections
 
 ### marketplace.json maintenance
-- Every plugin must have an entry in `.claude-plugin/marketplace.json`
+- Every plugin must have an entry in both `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`
 - The `source` field must match the plugin directory path exactly
 - Version bumps in marketplace.json must match actual plugin changes
+- Keep `antigravity_mcp.json` in sync when adding or removing plugins
