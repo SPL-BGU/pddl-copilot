@@ -41,12 +41,15 @@ fi
 
 # ── Parse MCP servers from all plugins ───────────────────────────────────────
 
-# Build combined MCP JSON from all discovered plugins
+# Build combined MCP JSON from all discovered plugins.
+# $1 = target tool name (optional). "antigravity" uses /bin/bash for PATH isolation.
 build_combined_mcp_simple() {
     if ! command -v python3 &>/dev/null; then
         echo "python3 is required." >&2
         exit 1
     fi
+
+    local target_tool="${1:-}"
 
     # Collect all plugin .mcp.json paths and resolve them
     local mcp_files=()
@@ -61,20 +64,27 @@ import json, sys, os
 
 mcp_files = sys.argv[1].split('|')
 plugin_paths = sys.argv[2].split('|')
+target_tool = sys.argv[3]
 combined = {'mcpServers': {}}
+
+# Antigravity runs in an isolated env without PATH — use absolute paths
+CMD_MAP = {'bash': '/bin/bash', 'python3': '/usr/bin/python3', 'node': '/usr/local/bin/node'}
 
 for mcp_file, plugin_path in zip(mcp_files, plugin_paths):
     with open(mcp_file) as f:
         mcp = json.load(f)
     for server_name, config in mcp.get('mcpServers', {}).items():
         args = [a.replace('\${CLAUDE_PLUGIN_ROOT}', plugin_path) for a in config.get('args', [])]
+        cmd = config.get('command', 'bash')
+        if target_tool == 'antigravity' and cmd in CMD_MAP:
+            cmd = CMD_MAP[cmd]
         combined['mcpServers'][server_name] = {
-            'command': config.get('command', 'bash'),
+            'command': cmd,
             'args': args
         }
 
 print(json.dumps(combined, indent=2))
-" "$(IFS='|'; echo "${mcp_files[*]}")" "$(IFS='|'; echo "${plugin_paths_clean[*]}")"
+" "$(IFS='|'; echo "${mcp_files[*]}")" "$(IFS='|'; echo "${plugin_paths_clean[*]}")" "$target_tool"
 }
 
 # ── Collect all skills ───────────────────────────────────────────────────────
@@ -109,7 +119,7 @@ print_cursor() {
     echo "=== Cursor ==="
     echo "MCP config — add to ~/.cursor/mcp.json (global) or .cursor/mcp.json (project):"
     echo ""
-    build_combined_mcp_simple
+    build_combined_mcp_simple "cursor"
     echo ""
     echo "Skills — symlink to ~/.cursor/skills/:"
     print_symlink_commands "$CURSOR_SKILLS"
@@ -120,7 +130,7 @@ print_antigravity() {
     echo "=== Antigravity ==="
     echo "MCP config — add to ~/.gemini/antigravity/mcp_config.json:"
     echo ""
-    build_combined_mcp_simple
+    build_combined_mcp_simple "antigravity"
     echo ""
     echo "Skills — symlink to ~/.gemini/antigravity/skills/:"
     print_symlink_commands "$ANTIGRAVITY_SKILLS"
@@ -131,17 +141,18 @@ print_antigravity() {
 
 merge_mcp_config() {
     local target="$1"
+    local tool_name="${2:-}"
 
     if [ ! -f "$target" ]; then
         mkdir -p "$(dirname "$target")"
-        build_combined_mcp_simple > "$target"
+        build_combined_mcp_simple "$tool_name" > "$target"
         echo "  Created $target"
         return
     fi
 
     if ! command -v python3 &>/dev/null; then
         echo "  Cannot auto-merge into $target (python3 required). Add manually:"
-        build_combined_mcp_simple
+        build_combined_mcp_simple "$tool_name"
         return
     fi
 
@@ -156,6 +167,9 @@ import json, sys, os
 target_file = sys.argv[1]
 plugin_path = sys.argv[2].rstrip('/')
 mcp_file = sys.argv[3]
+tool_name = sys.argv[4]
+
+CMD_MAP = {'bash': '/bin/bash', 'python3': '/usr/bin/python3', 'node': '/usr/local/bin/node'}
 
 with open(target_file) as f:
     existing = json.load(f)
@@ -167,15 +181,18 @@ for server_name, config in plugin_mcp.get('mcpServers', {}).items():
     if server_name in existing.get('mcpServers', {}):
         continue
     args = [a.replace('\${CLAUDE_PLUGIN_ROOT}', plugin_path) for a in config.get('args', [])]
+    cmd = config.get('command', 'bash')
+    if tool_name == 'antigravity' and cmd in CMD_MAP:
+        cmd = CMD_MAP[cmd]
     existing.setdefault('mcpServers', {})[server_name] = {
-        'command': config.get('command', 'bash'),
+        'command': cmd,
         'args': args
     }
 
 with open(target_file, 'w') as f:
     json.dump(existing, f, indent=2)
     f.write('\n')
-" "$target" "$plugin_path" "$mcp_file"
+" "$target" "$plugin_path" "$mcp_file" "$tool_name"
     done
     echo "  Updated $target"
 }
@@ -223,13 +240,13 @@ install_configs() {
 
     if [ -d "$HOME/.cursor" ]; then
         echo "Cursor:"
-        merge_mcp_config "$CURSOR_MCP"
+        merge_mcp_config "$CURSOR_MCP" "cursor"
         symlink_skills "$CURSOR_SKILLS"
     fi
 
     if [ -d "$HOME/.gemini" ]; then
         echo "Antigravity:"
-        merge_mcp_config "$ANTIGRAVITY_MCP"
+        merge_mcp_config "$ANTIGRAVITY_MCP" "antigravity"
         symlink_skills "$ANTIGRAVITY_SKILLS"
     fi
 
