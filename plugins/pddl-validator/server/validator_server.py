@@ -49,29 +49,26 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
             f.write(content_or_path)
         return path
 
+    # First, is it already a valid container path? 
+    if os.path.isfile(stripped):
+        return stripped
+
     # Translate host absolute path → container path
     host_pwd = os.environ.get("HOST_PWD", "")
     if host_pwd and stripped.startswith(host_pwd):
         translated = "/workspace/" + stripped[len(host_pwd):].lstrip("/")
         if os.path.isfile(translated):
             return translated
-        raise FileNotFoundError(
-            f"Translated path '{translated}' not found in container. "
-            f"Host path: '{stripped}', HOST_PWD: '{host_pwd}'"
-        )
 
     # Relative path — resolve against /workspace
-    workspace_path = os.path.join("/workspace", stripped)
-    if os.path.isfile(workspace_path):
-        return workspace_path
-
-    # Already a valid container path?
-    if os.path.isfile(stripped):
-        return stripped
+    if not os.path.isabs(stripped):
+        workspace_path = os.path.join("/workspace", stripped)
+        if os.path.isfile(workspace_path):
+            return workspace_path
 
     raise FileNotFoundError(
         f"PDDL file not found. Path: '{stripped}'. "
-        f"Not found at '/workspace/{stripped}' either. "
+        f"Not found at '/workspace/...' either. "
         f"HOST_PWD='{host_pwd}'. "
         f"Ensure the file is inside the mounted directory, or pass inline PDDL content instead."
     )
