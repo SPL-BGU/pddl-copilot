@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "PDDL planning tools marketplace",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "pluginRoot": "plugins"
   },
   "plugins": [
     {
-      "name": "pddl-planning-copilot",
-      "description": "PDDL Copilot — solve, validate, and simulate PDDL problems using Fast Downward, Metric-FF, and VAL pre-compiled in Docker.",
-      "source": "./plugins/pddl-planning-copilot",
+      "name": "pddl-solver",
+      "description": "PDDL planning — compute plans using Fast Downward (classical) and Metric-FF (numeric) in Docker.",
+      "source": "./plugins/pddl-solver",
       "author": {
         "name": "SPL-BGU"
       },
@@ -21,7 +21,21 @@
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
-      "keywords": ["pddl", "planning", "fast-downward", "metric-ff", "val"]
+      "keywords": ["pddl", "planning", "fast-downward", "metric-ff"]
+    },
+    {
+      "name": "pddl-validator",
+      "description": "PDDL validation — validate PDDL syntax, plans, and simulate state transitions using VAL in Docker.",
+      "source": "./plugins/pddl-validator",
+      "author": {
+        "name": "SPL-BGU"
+      },
+      "license": "MIT",
+      "version": "1.0.0",
+      "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+      "repository": "https://github.com/SPL-BGU/pddl-copilot",
+      "category": "planning",
+      "keywords": ["pddl", "validation", "val", "state-transition"]
     }
   ]
 }

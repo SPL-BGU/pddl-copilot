@@ -7,10 +7,14 @@ This repository is a Claude Code plugin marketplace. Each plugin lives in its ow
 - `.claude-plugin/marketplace.json` — marketplace catalog listing all available plugins
 - `.claude-plugin/plugin.json` — marketplace-level metadata
 - `plugins/<plugin-name>/` — each plugin with its own `CLAUDE.md`, `.mcp.json`, skills, scripts, etc.
+- `docker/` — shared Docker image build (Dockerfile for Fast Downward, Metric-FF, VAL)
+- `install_marketplace.sh` — unified Cursor/Antigravity installer (auto-discovers all plugins)
+- `antigravity_mcp.json` — static reference MCP config for Antigravity users
 
 ## Available Plugins
 
-- **pddl-planning-copilot** (`plugins/pddl-planning-copilot/`) — PDDL planning, validation, and simulation using Fast Downward, Metric-FF, and VAL in Docker
+- **pddl-solver** (`plugins/pddl-solver/`) — PDDL planning using Fast Downward and Metric-FF in Docker
+- **pddl-validator** (`plugins/pddl-validator/`) — PDDL validation and state transition simulation using VAL in Docker
 
 ## Ollama MCP Bridge
 
@@ -54,12 +58,13 @@ Use `/simplify [description]` — forks to the simplifier agent which reviews fo
 
 Each plugin has its own verify/test script. Run before committing server or infrastructure changes:
 
-- **Tier 3 (Docker) plugins**: `bash plugins/<name>/docker/verify.sh`
+- **Tier 3 (Docker) plugins**: `bash plugins/<name>/tests/verify.sh`
 - **Tier 1-2 plugins**: the plugin's test script (varies per plugin)
 
-Example for pddl-planning-copilot (Tier 3):
+Examples:
 ```bash
-bash plugins/pddl-planning-copilot/docker/verify.sh
+bash plugins/pddl-solver/tests/verify.sh
+bash plugins/pddl-validator/tests/verify.sh
 ```
 
 ## Adding a New Plugin
@@ -74,13 +79,15 @@ bash plugins/pddl-planning-copilot/docker/verify.sh
 5. Create `.claude/settings.json` with pre-approved tool permissions
 6. Create `scripts/launch-server.sh` appropriate for the chosen tier
 7. Create the MCP server script
-8. **(Tier 3 only)** Create `docker/Dockerfile` and `docker/verify.sh`
+8. **(Tier 3 only)** Use the shared `docker/Dockerfile` image; create `tests/verify.sh`
 9. Create a verify/test script that exercises all MCP tools
 10. Create at least one skill under `skills/`
-11. Add entry to `.claude-plugin/marketplace.json`
-12. Update this file's Available Plugins section
+11. Add entry to `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`
+12. Update `antigravity_mcp.json` with the new plugin's server entry
+13. Verify auto-discovery: `bash install_marketplace.sh`
+14. Update this file's Available Plugins section
 
-Use `/plugin-specialist` to research current plugin patterns and `plugins/pddl-planning-copilot/` as a local reference (noting it is Tier 3 — most plugins should be simpler).
+Use `/plugin-specialist` to research current plugin patterns and `plugins/pddl-solver/` as a local reference (noting it is Tier 3 — most plugins should be simpler).
 
 ## Rules for Developers
 

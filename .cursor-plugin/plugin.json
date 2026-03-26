@@ -1,12 +1,12 @@
 {
-  "name": "pddl-planning-copilot",
-  "version": "1.0.0",
-  "description": "PDDL Copilot — solve, validate, and simulate PDDL problems using Fast Downward, Metric-FF, and VAL pre-compiled in Docker.",
+  "name": "pddl-copilot",
+  "version": "2.0.0",
+  "description": "PDDL Copilot Marketplace — planning and validation tools using Fast Downward, Metric-FF, and VAL in Docker.",
   "author": {
     "name": "SPL-BGU"
   },
   "license": "MIT",
   "homepage": "https://github.com/SPL-BGU/pddl-copilot",
   "repository": "https://github.com/SPL-BGU/pddl-copilot",
-  "keywords": ["pddl", "planning", "fast-downward", "metric-ff", "val"]
+  "keywords": ["pddl", "planning", "validation", "fast-downward", "metric-ff", "val"]
 }

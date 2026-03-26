@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "pddl-validator": {
+      "command": "bash",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/scripts/launch-server.sh"]
+    }
+  }
+}

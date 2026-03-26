@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "pddl-solver": {
+      "command": "bash",
+      "args": ["<REPO_PATH>/plugins/pddl-solver/scripts/launch-server.sh"]
+    },
+    "pddl-validator": {
+      "command": "bash",
+      "args": ["<REPO_PATH>/plugins/pddl-validator/scripts/launch-server.sh"]
+    }
+  }
+}

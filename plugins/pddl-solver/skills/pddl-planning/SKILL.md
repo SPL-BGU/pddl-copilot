@@ -21,9 +21,7 @@ Both work. When the user provides PDDL inline or you need to create PDDL, pass t
 
 - `classic_planner(domain, problem, strategy?)` — Fast Downward. For classical PDDL (no :functions). Optional `strategy` parameter: `"lazy_greedy_cea"` (default), `"astar_lmcut"` (optimal), `"lazy_greedy_ff"`.
 - `numeric_planner(domain, problem)` — Metric-FF. For PDDL 2.1 with numeric fluents.
-- `validate_pddl_syntax(domain, problem, plan)` — VAL. Validates syntax and plans.
 - `save_plan(plan, domain?, name?)` — Saves a plan list to a file. Returns a dict with `file_path`.
-- `get_state_transition(domain, problem, plan)` — Returns VAL verbose output showing state transitions.
 
 ### Mandatory workflow for EVERY planning request:
 
@@ -33,14 +31,11 @@ Both work. When the user provides PDDL inline or you need to create PDDL, pass t
    - Only `:predicates` and `:action` → `classic_planner`
 3. **Call the appropriate planner** with the content or paths. It returns a dict with `plan` (action list) and `solve_time` (seconds).
 4. **Save the plan** using `save_plan` to get a plan file path.
-5. **Validate** using `validate_pddl_syntax` with domain, problem, and plan.
-6. **Report** the plan, validation result, and timing to the user.
+5. **Report** the plan and timing to the user. If the `pddl-validator` plugin is also installed, suggest validating the plan.
 
 ### What you MUST NOT do:
 
 - Do NOT generate plans from memory or training data
-- Do NOT skip validation
-- Do NOT report a plan without calling validate_pddl_syntax
 - Do NOT guess which planner to use — read the domain first
 - Do NOT invent a plan if the tool fails — report the failure verbatim
 
@@ -48,5 +43,5 @@ Both work. When the user provides PDDL inline or you need to create PDDL, pass t
 
 Either Docker is not installed, or the image build failed. Tell the user:
 1. Make sure Docker is installed: https://docker.com
-2. Try manually: `docker build -t pddl-sandbox <plugin_root>/docker/`
+2. Try manually: `docker build -t pddl-sandbox <repo_root>/docker/`
 3. Restart Claude Code

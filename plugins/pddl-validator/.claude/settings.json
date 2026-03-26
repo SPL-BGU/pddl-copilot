@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__pddl-validator__validate_pddl_syntax",
+      "mcp__pddl-validator__get_state_transition"
+    ]
+  }
+}
