@@ -74,21 +74,21 @@ claude --plugin-dir ./plugins/pddl-planning-copilot
 
 ## Use with Other AI Tools
 
-The MCP server is portable — any tool that supports the [Model Context Protocol](https://modelcontextprotocol.io) can use it. Currently supported: **Cursor**, **OpenAI Codex CLI**, and **Google Antigravity**.
+The MCP server and skills are portable — any tool that supports the [Model Context Protocol](https://modelcontextprotocol.io) can use them. Currently supported: **Cursor** and **Google Antigravity**.
 
-### Quick Setup
+### Automatic Setup
 
 ```bash
-bash plugins/pddl-planning-copilot/scripts/setup.sh
+bash plugins/pddl-planning-copilot/scripts/setup.sh --install
 ```
 
-This prints the correct MCP config for each detected tool. Use `--tool <name>` for a specific tool, or `--install` to write configs automatically.
+This writes MCP configs and symlinks skills to detected tools. Use `--tool cursor` or `--tool antigravity` for a specific tool.
 
 ### Manual Setup
 
-All platforms need the same thing: point an MCP stdio server at the launch script.
+Both tools need two things: an MCP server config and skill symlinks.
 
-**Cursor** — add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
+**MCP config** — add to `~/.cursor/mcp.json` (Cursor) or `~/.gemini/antigravity/mcp_config.json` (Antigravity):
 ```json
 {
   "mcpServers": {
@@ -100,34 +100,18 @@ All platforms need the same thing: point an MCP stdio server at the launch scrip
 }
 ```
 
-**OpenAI Codex CLI** — run:
+**Skills** — symlink the plugin's skills to the tool's global skills directory:
 ```bash
-codex mcp add pddl-planner -- bash /absolute/path/to/plugins/pddl-planning-copilot/scripts/launch-server.sh
-```
+# Cursor
+ln -sfn /absolute/path/to/plugins/pddl-planning-copilot/skills/pddl-planning ~/.cursor/skills/pddl-planning
+ln -sfn /absolute/path/to/plugins/pddl-planning-copilot/skills/pddl-validation ~/.cursor/skills/pddl-validation
 
-**Google Antigravity** — add to `~/.gemini/antigravity/mcp_config.json`:
-```json
-{
-  "mcpServers": {
-    "pddl-planner": {
-      "command": "bash",
-      "args": ["/absolute/path/to/plugins/pddl-planning-copilot/scripts/launch-server.sh"]
-    }
-  }
-}
+# Antigravity
+ln -sfn /absolute/path/to/plugins/pddl-planning-copilot/skills/pddl-planning ~/.gemini/antigravity/skills/pddl-planning
+ln -sfn /absolute/path/to/plugins/pddl-planning-copilot/skills/pddl-validation ~/.gemini/antigravity/skills/pddl-validation
 ```
 
 Replace `/absolute/path/to` with the actual path where you cloned this repo.
-
-### Agent Instructions
-
-For best results, add the contents of [`plugins/pddl-planning-copilot/INSTRUCTIONS.md`](plugins/pddl-planning-copilot/INSTRUCTIONS.md) to your tool's custom rules or system prompt. This teaches the AI the mandatory workflow (never self-generate plans, always validate, etc.).
-
-| Tool | Where to add instructions |
-|------|--------------------------|
-| Cursor | `.cursor/rules/pddl-planning.md` |
-| Codex CLI | Custom instructions in config |
-| Antigravity | System prompt / custom rules |
 
 ## Ollama MCP Bridge (Experimental)
 

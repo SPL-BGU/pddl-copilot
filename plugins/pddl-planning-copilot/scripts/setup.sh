@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# setup.sh — Generate MCP server config for Cursor, Codex CLI, and Antigravity.
+# setup.sh — Configure MCP server + skills for Cursor and Antigravity.
 #
 # Usage:
 #   bash setup.sh                     # print configs for all detected tools
 #   bash setup.sh --tool cursor       # print Cursor config only
-#   bash setup.sh --tool codex        # print Codex CLI config only
 #   bash setup.sh --tool antigravity  # print Antigravity config only
-#   bash setup.sh --install           # write configs to detected tools (with confirmation)
+#   bash setup.sh --install           # write configs + symlink skills (with confirmation)
 
 set -euo pipefail
 
@@ -14,6 +13,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MCP_JSON="$PLUGIN_ROOT/.mcp.json"
 LAUNCH_SCRIPT="$SCRIPT_DIR/launch-server.sh"
+SKILLS_DIR="$PLUGIN_ROOT/skills"
 
 # ── Parse .mcp.json ──────────────────────────────────────────────────────────
 
@@ -22,16 +22,14 @@ if [ ! -f "$MCP_JSON" ]; then
     exit 1
 fi
 
-# Extract server name (first key under mcpServers) — pure bash + python fallback
 if command -v python3 &>/dev/null; then
     SERVER_NAME=$(python3 -c "
 import json, sys
-with open('$MCP_JSON') as f:
+with open(sys.argv[1]) as f:
     d = json.load(f)
 print(list(d.get('mcpServers', {}).keys())[0])
-")
+" "$MCP_JSON")
 else
-    # Fallback: grep for first key after mcpServers
     SERVER_NAME=$(grep -A1 '"mcpServers"' "$MCP_JSON" | grep '"' | head -1 | sed 's/.*"\([^"]*\)".*/\1/')
 fi
 
@@ -40,15 +38,16 @@ if [ -z "$SERVER_NAME" ]; then
     exit 1
 fi
 
-# ── Config locations ─────────────────────────────────────────────────────────
+# ── Config paths ─────────────────────────────────────────────────────────────
 
-CURSOR_GLOBAL="$HOME/.cursor/mcp.json"
-ANTIGRAVITY_CONFIG="$HOME/.gemini/antigravity/mcp_config.json"
-CODEX_CONFIG="$HOME/.codex/config.toml"
+CURSOR_MCP="$HOME/.cursor/mcp.json"
+CURSOR_SKILLS="$HOME/.cursor/skills"
+ANTIGRAVITY_MCP="$HOME/.gemini/antigravity/mcp_config.json"
+ANTIGRAVITY_SKILLS="$HOME/.gemini/antigravity/skills"
 
-# ── Config generators ────────────────────────────────────────────────────────
+# ── Config generator (shared JSON format) ────────────────────────────────────
 
-json_config() {
+mcp_json() {
     cat <<EOF
 {
   "mcpServers": {
@@ -61,120 +60,104 @@ json_config() {
 EOF
 }
 
-toml_config() {
-    cat <<EOF
-[mcp_servers.$SERVER_NAME]
-command = "bash"
-args = ["$LAUNCH_SCRIPT"]
-EOF
+# ── Symlink commands ─────────────────────────────────────────────────────────
+
+symlink_commands() {
+    local target_dir="$1"
+    for skill_dir in "$SKILLS_DIR"/*/; do
+        local name
+        name=$(basename "$skill_dir")
+        echo "  ln -sfn \"$skill_dir\" \"$target_dir/$name\""
+    done
 }
 
-codex_add_command() {
-    echo "codex mcp add $SERVER_NAME -- bash $LAUNCH_SCRIPT"
-}
-
-# ── Output helpers ───────────────────────────────────────────────────────────
+# ── Print helpers ────────────────────────────────────────────────────────────
 
 print_cursor() {
     echo "=== Cursor ==="
-    echo "Add to .cursor/mcp.json (project-level) or ~/.cursor/mcp.json (global):"
+    echo "MCP config — add to ~/.cursor/mcp.json (global) or .cursor/mcp.json (project):"
     echo ""
-    json_config
+    mcp_json
+    echo ""
+    echo "Skills — symlink to ~/.cursor/skills/:"
+    symlink_commands "$CURSOR_SKILLS"
     echo ""
 }
 
 print_antigravity() {
     echo "=== Antigravity ==="
-    echo "Add to ~/.gemini/antigravity/mcp_config.json:"
+    echo "MCP config — add to ~/.gemini/antigravity/mcp_config.json:"
     echo ""
-    json_config
+    mcp_json
     echo ""
-}
-
-print_codex() {
-    echo "=== OpenAI Codex CLI ==="
-    echo "Quick setup:"
-    echo "  $(codex_add_command)"
-    echo ""
-    echo "Or add to ~/.codex/config.toml:"
-    echo ""
-    toml_config
+    echo "Skills — symlink to ~/.gemini/antigravity/skills/:"
+    symlink_commands "$ANTIGRAVITY_SKILLS"
     echo ""
 }
 
-# ── Install helper ───────────────────────────────────────────────────────────
+# ── Install helpers ──────────────────────────────────────────────────────────
 
-merge_json_config() {
+merge_mcp_config() {
     local target="$1"
     if [ ! -f "$target" ]; then
         mkdir -p "$(dirname "$target")"
-        json_config > "$target"
+        mcp_json > "$target"
         echo "  Created $target"
         return
     fi
 
-    # Check if server already configured
     if grep -q "\"$SERVER_NAME\"" "$target" 2>/dev/null; then
-        echo "  $target already contains \"$SERVER_NAME\" — skipping (edit manually if needed)"
+        echo "  $target already contains \"$SERVER_NAME\" — skipping"
         return
     fi
 
-    # Merge using python3
     if ! command -v python3 &>/dev/null; then
         echo "  Cannot auto-merge into $target (python3 required). Add manually:"
-        json_config
+        mcp_json
         return
     fi
 
     python3 -c "
 import json, sys
-with open('$target') as f:
+target, server_name, launch_script = sys.argv[1], sys.argv[2], sys.argv[3]
+with open(target) as f:
     existing = json.load(f)
-existing.setdefault('mcpServers', {})['$SERVER_NAME'] = {
+existing.setdefault('mcpServers', {})[server_name] = {
     'command': 'bash',
-    'args': ['$LAUNCH_SCRIPT']
+    'args': [launch_script]
 }
-with open('$target', 'w') as f:
+with open(target, 'w') as f:
     json.dump(existing, f, indent=2)
     f.write('\n')
-"
+" "$target" "$SERVER_NAME" "$LAUNCH_SCRIPT"
     echo "  Updated $target"
 }
 
-append_toml_config() {
-    local target="$1"
-    if [ -f "$target" ] && grep -q "\[mcp_servers\.$SERVER_NAME\]" "$target" 2>/dev/null; then
-        echo "  $target already contains [$SERVER_NAME] — skipping"
-        return
-    fi
-    mkdir -p "$(dirname "$target")"
-    echo "" >> "$target"
-    toml_config >> "$target"
-    echo "  Updated $target"
+symlink_skills() {
+    local target_dir="$1"
+    mkdir -p "$target_dir"
+    for skill_dir in "$SKILLS_DIR"/*/; do
+        local name
+        name=$(basename "$skill_dir")
+        ln -sfn "$skill_dir" "$target_dir/$name"
+        echo "  Linked $target_dir/$name"
+    done
 }
 
 install_configs() {
-    echo "This will write MCP configs to detected tool config files."
+    echo "This will write MCP configs and symlink skills to detected tools."
     echo ""
 
     local found=false
 
-    # Cursor
     if [ -d "$HOME/.cursor" ]; then
         found=true
         echo "  Cursor detected (~/.cursor/)"
     fi
 
-    # Antigravity
     if [ -d "$HOME/.gemini" ]; then
         found=true
         echo "  Antigravity detected (~/.gemini/)"
-    fi
-
-    # Codex
-    if command -v codex &>/dev/null || [ -d "$HOME/.codex" ]; then
-        found=true
-        echo "  Codex CLI detected"
     fi
 
     if [ "$found" = false ]; then
@@ -192,23 +175,19 @@ install_configs() {
     echo ""
 
     if [ -d "$HOME/.cursor" ]; then
-        merge_json_config "$CURSOR_GLOBAL"
+        echo "Cursor:"
+        merge_mcp_config "$CURSOR_MCP"
+        symlink_skills "$CURSOR_SKILLS"
     fi
 
     if [ -d "$HOME/.gemini" ]; then
-        merge_json_config "$ANTIGRAVITY_CONFIG"
-    fi
-
-    if command -v codex &>/dev/null || [ -d "$HOME/.codex" ]; then
-        append_toml_config "$CODEX_CONFIG"
+        echo "Antigravity:"
+        merge_mcp_config "$ANTIGRAVITY_MCP"
+        symlink_skills "$ANTIGRAVITY_SKILLS"
     fi
 
     echo ""
-    echo "Done. Restart your IDE/CLI to pick up the new MCP server."
-    echo ""
-    echo "For best results, add the agent instructions from INSTRUCTIONS.md"
-    echo "to your tool's custom rules or system prompt."
-    echo "  File: $PLUGIN_ROOT/INSTRUCTIONS.md"
+    echo "Done. Restart your IDE to pick up the new MCP server and skills."
 }
 
 # ── Parse arguments ──────────────────────────────────────────────────────────
@@ -227,10 +206,10 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --help|-h)
-            echo "Usage: bash setup.sh [--tool cursor|codex|antigravity] [--install]"
+            echo "Usage: bash setup.sh [--tool cursor|antigravity] [--install]"
             echo ""
             echo "  --tool <name>  Print config for a specific tool only"
-            echo "  --install      Write configs to detected tool config files"
+            echo "  --install      Write MCP configs + symlink skills to detected tools"
             echo "  --help         Show this help"
             exit 0
             ;;
@@ -247,6 +226,7 @@ done
 echo "PDDL Copilot — MCP Server Setup"
 echo "Server: $SERVER_NAME"
 echo "Launch: $LAUNCH_SCRIPT"
+echo "Skills: $SKILLS_DIR"
 echo ""
 
 if [ "$INSTALL" = true ]; then
@@ -258,10 +238,9 @@ if [ -n "$TOOL" ]; then
     case "$TOOL" in
         cursor)       print_cursor ;;
         antigravity)  print_antigravity ;;
-        codex)        print_codex ;;
         *)
             echo "Unknown tool: $TOOL" >&2
-            echo "Supported: cursor, codex, antigravity" >&2
+            echo "Supported: cursor, antigravity" >&2
             exit 1
             ;;
     esac
@@ -270,10 +249,4 @@ fi
 
 # No --tool flag: print all
 print_cursor
-print_codex
 print_antigravity
-
-echo "---"
-echo "For best results, add the agent instructions from INSTRUCTIONS.md"
-echo "to your tool's custom rules or system prompt."
-echo "  File: $PLUGIN_ROOT/INSTRUCTIONS.md"
