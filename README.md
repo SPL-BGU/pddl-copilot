@@ -72,6 +72,34 @@ The plugin is now installed globally — start Claude Code from any project dire
 claude --plugin-dir ./plugins/pddl-planning-copilot
 ```
 
+## Ollama MCP Bridge (Experimental)
+
+A CLI tool that connects local Ollama models to MCP plugins from this marketplace. Lets open-source LLMs use the same planning tools as Claude Code.
+
+### Setup
+
+```bash
+pip3 install -r requirements-bridge.txt
+```
+
+### Usage
+
+```bash
+python3 ollama_mcp_bridge.py
+```
+
+Or non-interactively:
+
+```bash
+python3 ollama_mcp_bridge.py --model qwen3:4b --plugins pddl-planning-copilot
+```
+
+### Requirements
+
+- [Ollama](https://ollama.com) installed and running (`ollama serve`)
+- A model with tool-calling support (e.g., `llama3.1`, `qwen3`, `mistral`)
+- Docker (for plugins that require it, like pddl-planning-copilot)
+
 ## Adding a New Plugin
 
 1. Create a directory under `plugins/<your-plugin-name>/`
@@ -115,6 +143,8 @@ pddl-copilot/
 │       └── docs/
 ├── .github/workflows/         # CI/CD (shared)
 ├── CLAUDE.md                  # Marketplace-level instructions
+├── ollama_mcp_bridge.py       # Ollama MCP Bridge CLI
+├── requirements-bridge.txt    # Bridge dependencies
 ├── LICENSE
 └── README.md
 ```
