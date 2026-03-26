@@ -72,6 +72,63 @@ The plugin is now installed globally — start Claude Code from any project dire
 claude --plugin-dir ./plugins/pddl-planning-copilot
 ```
 
+## Use with Other AI Tools
+
+The MCP server is portable — any tool that supports the [Model Context Protocol](https://modelcontextprotocol.io) can use it. Currently supported: **Cursor**, **OpenAI Codex CLI**, and **Google Antigravity**.
+
+### Quick Setup
+
+```bash
+bash plugins/pddl-planning-copilot/scripts/setup.sh
+```
+
+This prints the correct MCP config for each detected tool. Use `--tool <name>` for a specific tool, or `--install` to write configs automatically.
+
+### Manual Setup
+
+All platforms need the same thing: point an MCP stdio server at the launch script.
+
+**Cursor** — add to `.cursor/mcp.json` (project) or `~/.cursor/mcp.json` (global):
+```json
+{
+  "mcpServers": {
+    "pddl-planner": {
+      "command": "bash",
+      "args": ["/absolute/path/to/plugins/pddl-planning-copilot/scripts/launch-server.sh"]
+    }
+  }
+}
+```
+
+**OpenAI Codex CLI** — run:
+```bash
+codex mcp add pddl-planner -- bash /absolute/path/to/plugins/pddl-planning-copilot/scripts/launch-server.sh
+```
+
+**Google Antigravity** — add to `~/.gemini/antigravity/mcp_config.json`:
+```json
+{
+  "mcpServers": {
+    "pddl-planner": {
+      "command": "bash",
+      "args": ["/absolute/path/to/plugins/pddl-planning-copilot/scripts/launch-server.sh"]
+    }
+  }
+}
+```
+
+Replace `/absolute/path/to` with the actual path where you cloned this repo.
+
+### Agent Instructions
+
+For best results, add the contents of [`plugins/pddl-planning-copilot/INSTRUCTIONS.md`](plugins/pddl-planning-copilot/INSTRUCTIONS.md) to your tool's custom rules or system prompt. This teaches the AI the mandatory workflow (never self-generate plans, always validate, etc.).
+
+| Tool | Where to add instructions |
+|------|--------------------------|
+| Cursor | `.cursor/rules/pddl-planning.md` |
+| Codex CLI | Custom instructions in config |
+| Antigravity | System prompt / custom rules |
+
 ## Ollama MCP Bridge (Experimental)
 
 A CLI tool that connects local Ollama models to MCP plugins from this marketplace. Lets open-source LLMs use the same planning tools as Claude Code.
