@@ -19,19 +19,34 @@ PLUGINS_DIR = os.path.join(REPO_ROOT, "plugins")
 # ── Plugin discovery ────────────────────────────────────────────────────────
 
 
+def _read_plugin_description(plugin_path):
+    """Read first non-empty, non-heading line from CLAUDE.md as description."""
+    claude_md = os.path.join(plugin_path, "CLAUDE.md")
+    try:
+        with open(claude_md) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    return line
+    except OSError:
+        pass
+    return None
+
+
 def discover_plugins():
     """Scan plugins/ directory for .mcp.json and return list of plugin dicts."""
     plugins = []
     if not os.path.isdir(PLUGINS_DIR):
         return plugins
-        
+
     for name in os.listdir(PLUGINS_DIR):
         abs_path = os.path.join(PLUGINS_DIR, name)
         mcp_json_path = os.path.join(abs_path, ".mcp.json")
         if os.path.isdir(abs_path) and os.path.isfile(mcp_json_path):
+            description = _read_plugin_description(abs_path) or f"Local plugin ({name})"
             plugins.append({
                 "name": name,
-                "description": f"Local plugin ({name})",
+                "description": description,
                 "source_abs": abs_path,
             })
     return sorted(plugins, key=lambda p: p["name"])
