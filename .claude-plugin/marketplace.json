@@ -11,7 +11,7 @@
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "source": "./plugins/pddl-solver",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
@@ -25,7 +25,7 @@
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "source": "./plugins/pddl-validator",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
