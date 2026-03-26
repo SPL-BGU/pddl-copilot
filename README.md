@@ -88,10 +88,6 @@ bash install_marketplace.sh --install
 
 This auto-discovers all plugins, writes MCP configs, and symlinks skills to detected tools. Use `--tool cursor` or `--tool antigravity` for a specific tool.
 
-### Manual Setup (Antigravity)
-
-Copy the contents of `antigravity_mcp.json` to `~/.gemini/antigravity/mcp_config.json`, replacing `<REPO_PATH>` with the absolute path to this repository.
-
 ### Manual Setup (Cursor / Antigravity)
 
 Both tools need two things: an MCP server config and skill symlinks.
@@ -163,8 +159,7 @@ python3 ollama_mcp_bridge.py --model qwen3:4b --plugins pddl-solver,pddl-validat
    - `skills/` — auto-discovered skills (optional)
    - `scripts/` — launch scripts, etc.
 3. Add an entry to `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`
-4. Update `antigravity_mcp.json` with the new plugin's server entry
-5. Verify auto-discovery: `bash install_marketplace.sh`
+4. Verify auto-discovery: `bash install_marketplace.sh`
 
 ## Repository Structure
 
@@ -198,7 +193,6 @@ pddl-copilot/
 │       └── tests/verify.sh
 ├── .github/workflows/         # CI/CD (shared)
 ├── install_marketplace.sh     # Unified Cursor/Antigravity installer
-├── antigravity_mcp.json       # Static reference for Antigravity
 ├── CLAUDE.md                  # Marketplace-level instructions
 ├── ollama_mcp_bridge.py       # Ollama MCP Bridge CLI
 ├── requirements-bridge.txt    # Bridge dependencies

@@ -9,7 +9,6 @@ This repository is a Claude Code plugin marketplace. Each plugin lives in its ow
 - `plugins/<plugin-name>/` — each plugin with its own `CLAUDE.md`, `.mcp.json`, skills, scripts, etc.
 - `docker/` — shared Docker image build (Dockerfile for Fast Downward, Metric-FF, VAL)
 - `install_marketplace.sh` — unified Cursor/Antigravity installer (auto-discovers all plugins)
-- `antigravity_mcp.json` — static reference MCP config for Antigravity users
 
 ## Available Plugins
 
@@ -83,9 +82,8 @@ bash plugins/pddl-validator/tests/verify.sh
 9. Create a verify/test script that exercises all MCP tools
 10. Create at least one skill under `skills/`
 11. Add entry to `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`
-12. Update `antigravity_mcp.json` with the new plugin's server entry
-13. Verify auto-discovery: `bash install_marketplace.sh`
-14. Update this file's Available Plugins section
+12. Verify auto-discovery: `bash install_marketplace.sh`
+13. Update this file's Available Plugins section
 
 Use `/plugin-specialist` to research current plugin patterns and `plugins/pddl-solver/` as a local reference (noting it is Tier 3 — most plugins should be simpler).
 

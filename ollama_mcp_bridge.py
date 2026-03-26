@@ -13,26 +13,43 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
-MARKETPLACE_PATH = os.path.join(REPO_ROOT, ".claude-plugin", "marketplace.json")
+PLUGINS_DIR = os.path.join(REPO_ROOT, "plugins")
 
 
-# ── Marketplace discovery ───────────────────────────────────────────────────
+# ── Plugin discovery ────────────────────────────────────────────────────────
 
 
-def load_marketplace():
-    """Read marketplace.json and return list of plugin dicts with resolved paths."""
-    with open(MARKETPLACE_PATH) as f:
-        catalog = json.load(f)
+def _read_plugin_description(plugin_path):
+    """Read first non-empty, non-heading line from CLAUDE.md as description."""
+    claude_md = os.path.join(plugin_path, "CLAUDE.md")
+    try:
+        with open(claude_md) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    return line
+    except OSError:
+        pass
+    return None
+
+
+def discover_plugins():
+    """Scan plugins/ directory for .mcp.json and return list of plugin dicts."""
     plugins = []
-    for p in catalog.get("plugins", []):
-        source = p.get("source", "")
-        abs_path = os.path.normpath(os.path.join(REPO_ROOT, source))
-        plugins.append({
-            "name": p["name"],
-            "description": p.get("description", ""),
-            "source_abs": abs_path,
-        })
-    return plugins
+    if not os.path.isdir(PLUGINS_DIR):
+        return plugins
+
+    for name in os.listdir(PLUGINS_DIR):
+        abs_path = os.path.join(PLUGINS_DIR, name)
+        mcp_json_path = os.path.join(abs_path, ".mcp.json")
+        if os.path.isdir(abs_path) and os.path.isfile(mcp_json_path):
+            description = _read_plugin_description(abs_path) or f"Local plugin ({name})"
+            plugins.append({
+                "name": name,
+                "description": description,
+                "source_abs": abs_path,
+            })
+    return sorted(plugins, key=lambda p: p["name"])
 
 
 def load_plugin_mcp_config(plugin_path):
@@ -260,10 +277,10 @@ async def main():
         model = await select_model()
     print(f"Using model: {model}\n")
 
-    # Load marketplace
-    plugins = load_marketplace()
+    # Discover plugins
+    plugins = discover_plugins()
     if not plugins:
-        print("No plugins found in marketplace.json")
+        print("No plugins found in plugins/ directory")
         sys.exit(1)
 
     # Select plugins

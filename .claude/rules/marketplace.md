@@ -42,12 +42,10 @@ paths:
 10. Create at least one skill under `skills/`
 11. Add entry to `.claude-plugin/marketplace.json`
 12. Add matching entry to `.cursor-plugin/marketplace.json`
-13. Update `antigravity_mcp.json` with the new plugin's server entry
-14. Verify auto-discovery: `bash install_marketplace.sh`
-15. Update root `README.md` and `CLAUDE.md` available plugins sections
+13. Verify auto-discovery: `bash install_marketplace.sh`
+14. Update root `README.md` and `CLAUDE.md` available plugins sections
 
 ### marketplace.json maintenance
 - Every plugin must have an entry in both `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`
 - The `source` field must match the plugin directory path exactly
 - Version bumps in marketplace.json must match actual plugin changes
-- Keep `antigravity_mcp.json` in sync when adding or removing plugins
