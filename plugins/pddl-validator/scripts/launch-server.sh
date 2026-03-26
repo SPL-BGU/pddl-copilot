@@ -96,12 +96,13 @@ fi
 # --- 3. Launch the MCP server inside the container ---
 # -i            : keep stdin open (required for MCP stdio transport)
 # --rm          : remove container when session ends
-# -v workspace  : mount the user's working directory so validator can access PDDL files
+# -v workspace  : mount user's HOME so validator can access PDDL files from any project
 # -v server     : mount plugin-specific server script, overriding the baked-in one
 # The server reads from stdin, writes to stdout — MCP stdio protocol.
+MOUNT_DIR="${HOME}"
 exec docker run --rm -i \
-    -e "HOST_PWD=${PWD}" \
-    -v "${PWD}:/workspace" \
+    -e "HOST_PWD=${MOUNT_DIR}" \
+    -v "${MOUNT_DIR}:/workspace" \
     -v "${SERVER_SCRIPT}:/opt/server/pddl_server.py:ro" \
     -w /workspace \
     "${IMAGE}" \

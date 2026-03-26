@@ -70,7 +70,7 @@ The MCP server wraps binaries that must be compiled from source or require an is
 1. Verify Docker is installed and daemon is running
 2. Handle Docker Desktop slow startup (wait loop with timeout)
 3. Try pulling pre-built image from GHCR before falling back to local build
-4. `exec docker run --rm -i -v $PWD:/workspace -e HOST_PWD=$PWD <image> python3 -m <server_module>`
+4. `exec docker run --rm -i -v $HOME:/workspace -e HOST_PWD=$HOME <image> python3 -m <server_module>`
 5. Use `--rm` flag so containers are removed on exit
 
 ### Docker patterns (Tier 3 only)
