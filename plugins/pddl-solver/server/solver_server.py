@@ -70,7 +70,7 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
     # Translate host absolute path → container path
     host_pwd = os.environ.get("HOST_PWD", "")
     if host_pwd and stripped.startswith(host_pwd):
-        translated = "/workspace" + stripped[len(host_pwd):]
+        translated = "/workspace/" + stripped[len(host_pwd):].lstrip("/")
         if os.path.isfile(translated):
             return translated
         raise FileNotFoundError(
