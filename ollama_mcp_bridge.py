@@ -150,6 +150,7 @@ async def chat_loop(model, ollama_tools, tool_to_session):
             ),
         }
     ]
+    think_mode = True  # start in "think" mode by default, allowing tool call chaining
 
     print("\nChat started. Type 'quit' to exit, '/clear' to reset history.\n")
 
@@ -170,11 +171,27 @@ async def chat_loop(model, ollama_tools, tool_to_session):
             messages = messages[:1]  # keep system message
             print("History cleared.\n")
             continue
+        if user_input == "/set nothink":
+            think_mode = False
+            print("Set 'nothink' mode.\n")
+            continue
+        if user_input.startswith("/set think"):
+            parts = user_input.split()
+
+            if len(parts) == 2 and parts[1] == "think":
+                think_mode = True
+                print("Set 'think' mode.\n")
+            elif len(parts) == 3 and parts[2] in ["low", "medium", "high"]:
+                think_mode = parts[2]
+                print(f"Set 'think' mode to {think_mode}.\n")
+            else:
+                print("Usage: /set think [low|medium|high]\n")
+            continue
 
         messages.append({"role": "user", "content": user_input})
 
         try:
-            response = await client.chat(model=model, messages=messages, tools=ollama_tools)
+            response = await client.chat(model=model, messages=messages, tools=ollama_tools, think=think_mode)
         except ollama.ResponseError as e:
             print(f"Ollama error: {e}")
             messages.pop()  # remove failed user message
@@ -194,7 +211,7 @@ async def chat_loop(model, ollama_tools, tool_to_session):
 
                 messages.append({"role": "tool", "content": result_text, "name": fn_name})
 
-            response = await client.chat(model=model, messages=messages, tools=ollama_tools)
+            response = await client.chat(model=model, messages=messages, tools=ollama_tools, think=think_mode)
 
         # Final text response
         messages.append(response.message)
