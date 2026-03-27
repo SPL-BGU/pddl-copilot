@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "pddl-solver",
-      "description": "PDDL planning — compute plans using Fast Downward (classical) and Metric-FF (numeric) in Docker.",
+      "description": "Solve PDDL planning problems — supports classical and numeric (PDDL 2.1) domains. Runs in Docker.",
       "source": "./plugins/pddl-solver",
       "author": {
         "name": "SPL-BGU"
@@ -25,7 +25,7 @@
     },
     {
       "name": "pddl-validator",
-      "description": "PDDL validation — validate PDDL syntax, plans, and simulate state transitions using VAL in Docker.",
+      "description": "Validate PDDL domains, problems, and plans — check syntax, verify plan correctness, and inspect state transitions. Runs in Docker.",
       "source": "./plugins/pddl-validator",
       "author": {
         "name": "SPL-BGU"

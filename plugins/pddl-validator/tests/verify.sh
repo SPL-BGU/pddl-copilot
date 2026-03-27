@@ -64,7 +64,7 @@ if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "$SETUP
 python3 -c \"
 from pddl_server import validate_pddl_syntax
 result = validate_pddl_syntax('/tmp/test/domain.pddl', '/tmp/test/problem.pddl')
-print(result[:200])
+print(str(result)[:200])
 \"" 2>/dev/null | grep -Eqi "retcode|checking"; then
     echo -e "${GREEN}OK${NC}"
 else
@@ -77,7 +77,7 @@ if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "$SETUP
 python3 -c \"
 from pddl_server import get_state_transition
 trace = get_state_transition('/tmp/test/domain.pddl', '/tmp/test/problem.pddl', '/tmp/test/plan.solution')
-print(trace[:300])
+print(str(trace)[:300])
 \"" 2>/dev/null | grep -Eqi "plan|checking|executing"; then
     echo -e "${GREEN}OK${NC}"
 else
