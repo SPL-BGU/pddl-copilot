@@ -12,7 +12,6 @@ A Claude Code plugin marketplace for PDDL planning and validation tools.
 ## Prerequisites
 
 - [Docker](https://docker.com) must be installed and running
-- [Claude Code](https://claude.com/claude-code) CLI
 
 ## Installation
 
