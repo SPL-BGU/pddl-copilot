@@ -24,7 +24,7 @@ The MCP server wraps tools installable via package managers (brew, apt, cargo, e
 **Tier 3 — Docker (only when necessary)**
 The MCP server wraps binaries that must be compiled from source or require an isolated environment with no native alternative.
 - Launch: Docker pull/build → `exec docker run`
-- Example: `plugins/pddl-planning-copilot/` wraps Fast Downward, Metric-FF, VAL (C++ binaries requiring compilation)
+- Example: `plugins/pddl-solver/` and `plugins/pddl-validator/` wrap Fast Downward, Metric-FF, VAL (C++ binaries requiring compilation)
 
 **When is Docker justified?**
 - The tool requires compiling C/C++/Rust from source with specific build flags
@@ -34,7 +34,7 @@ The MCP server wraps binaries that must be compiled from source or require an is
 
 ### MCP server patterns (all tiers)
 1. **Use FastMCP**: All MCP servers use `from mcp.server.fastmcp import FastMCP`. Do not implement the MCP protocol manually.
-2. **Content-or-path inputs**: Tools that accept file content should also accept file paths. See `plugins/pddl-planning-copilot/docker/solvers_server_wrapper.py` for the `_ensure_file()` pattern.
+2. **Content-or-path inputs**: Tools that accept file content should also accept file paths. See `plugins/pddl-solver/server/solver_server.py` for the `_ensure_file()` pattern.
 3. **Stateless tools**: Each tool invocation should be independent. Use temp directories for intermediate files, clean up after.
 4. **Error dicts**: Return `{"error": True, "message": "..."}` for recoverable errors. Raise exceptions only for bugs.
 5. **Timeout handling**: Wrap subprocess calls with `timeout` parameter. Return error dict on timeout, do not crash.
@@ -50,7 +50,7 @@ The MCP server wraps binaries that must be compiled from source or require an is
 ### Verification requirements
 1. **Every plugin must have a test/verify script**: Smoke tests for all MCP tools.
    - Tier 1-2: a test script that starts the server and exercises each tool
-   - Tier 3: `docker/verify.sh` that runs tests in isolated containers
+   - Tier 3: `tests/verify.sh` that runs tests in isolated containers
 2. **Test every declared tool**: If `.mcp.json` exposes 5 tools, the verify script must test all 5.
 3. **Inline test data**: Do not depend on external fixture files. Define test data in the verify script.
 4. **Run verification before committing server changes**: This is the equivalent of "tests must pass".

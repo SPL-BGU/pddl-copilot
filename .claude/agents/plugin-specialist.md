@@ -45,10 +45,10 @@ When studying external plugins and open-source examples:
 | **2. System deps** | Wraps tools installable via brew/apt/cargo | Check deps → install if missing → `exec` server |
 | **3. Docker** | Wraps binaries that must be compiled from source, or need isolated environments with no native alternative | Docker pull/build → `exec docker run` |
 
-The existing `plugins/pddl-planning-copilot/` is a **Tier 3** plugin because Fast Downward, Metric-FF, and VAL are C++ binaries requiring compilation. This is the exception — most plugins should be Tier 1 or 2.
+The existing `plugins/pddl-solver/` and `plugins/pddl-validator/` are **Tier 3** plugins because Fast Downward, Metric-FF, and VAL are C++ binaries requiring compilation. This is the exception — most plugins should be Tier 1 or 2.
 
-### 5. Use our local plugin as reference — with context
-`plugins/pddl-planning-copilot/` is a solid reference for:
+### 5. Use our local plugins as reference — with context
+`plugins/pddl-solver/` is a solid reference for:
 - Plugin file layout (`.mcp.json`, `CLAUDE.md`, `.claude/settings.json`, `skills/`)
 - Skill prompting patterns (mandatory rules, activation triggers, error handling guidance)
 - MCP server tool design (parameter patterns, return formats, error dicts)

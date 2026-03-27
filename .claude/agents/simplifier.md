@@ -19,7 +19,7 @@ This repository is a Claude Code plugin marketplace. Plugins are self-contained 
 - New root-level files or directories that should live inside a plugin
 - **Using Docker when it's unnecessary** — if a plugin's dependencies are pip/npm/brew-installable, Docker adds complexity for no gain. Only Tier 3 plugins (compiled binaries with no native alternative) should use Docker.
 - Docker antipatterns in Tier 3 plugins (multi-purpose containers, unnecessary layers, unstripped binaries, missing .dockerignore entries)
-- Docker patterns copied from `pddl-planning-copilot` into plugins that don't need them — that plugin is Tier 3 (compiled C++ binaries), most plugins should be Tier 1 or 2
+- Docker patterns copied from `pddl-solver`/`pddl-validator` into plugins that don't need them — those plugins are Tier 3 (compiled C++ binaries), most plugins should be Tier 1 or 2
 - MCP server complexity beyond what FastMCP provides out of the box
 - Skills or rules placed in the wrong scope (dev vs user-facing)
 
