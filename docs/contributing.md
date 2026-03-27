@@ -120,3 +120,7 @@ bash plugins/<name>/tests/verify.sh
 - If `.mcp.json` exposes N tools, the verify script must test all N
 - Use inline test data — don't depend on external fixture files
 - Run verification before committing server or infrastructure changes
+
+## Testing a Branch
+
+To validate branch changes on another machine before merging, see [Branch Testing](branch-testing.md).
