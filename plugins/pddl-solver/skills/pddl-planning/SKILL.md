@@ -1,6 +1,7 @@
 ---
 name: pddl-planning
 description: Activates when the user asks to solve, plan, or compute a solution for a PDDL planning problem, mentions PDDL domains or problems, asks about blocksworld/logistics/gripper or any planning domain, uploads .pddl files, or mentions planners like Fast Downward or Metric-FF.
+allowed-tools: mcp__pddl-solver__classic_planner, mcp__pddl-solver__numeric_planner, mcp__pddl-solver__save_plan
 ---
 
 ## CRITICAL RULES — You MUST follow these with zero exceptions

@@ -211,17 +211,12 @@ def _run_val(domain_path: str, problem_path: str = None,
 # MCP Tools
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def classic_planner(domain: str, problem: str, strategy: str = "lazy_greedy_cea") -> dict:
-    """
-    Computes a plan for a classical PDDL planning problem using Fast Downward.
-    Does NOT support numeric fluents or durative actions.
-
-    :param domain: File path or PDDL content string for the domain definition.
-    :param problem: File path or PDDL content string for the problem definition.
-    :param strategy: Search strategy. Options: "lazy_greedy_cea" (default), "astar_lmcut", "lazy_greedy_ff".
-    :return: Dict with 'plan' (action list) and 'solve_time' (seconds).
-    """
+    """Computes a plan for a classical PDDL planning problem using Fast Downward.
+    Does NOT support numeric fluents or durative actions — use numeric_planner for those.
+    Returns dict with 'plan' (action list, empty if unsolvable) and 'solve_time' (seconds).
+    On failure returns dict with 'error' and 'message'."""
     if strategy not in FD_STRATEGIES:
         return {
             "error": True,
@@ -269,16 +264,13 @@ def classic_planner(domain: str, problem: str, strategy: str = "lazy_greedy_cea"
         return {"plan": plan, "solve_time": round(t2 - t1, 3)}
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def numeric_planner(domain: str, problem: str) -> dict:
-    """
-    Computes a plan for a PDDL 2.1 planning problem with numeric fluents
-    using Metric-FF.
-
-    :param domain: File path or PDDL content string for the domain definition.
-    :param problem: File path or PDDL content string for the problem definition.
-    :return: Dict with 'plan' (action list) and 'solve_time' (seconds).
-    """
+    """Computes a plan for a PDDL problem with numeric fluents (:functions, increase, decrease) using Metric-FF.
+    Use this instead of classic_planner when the domain uses :functions or numeric effects.
+    Does NOT support durative/temporal actions.
+    Returns dict with 'plan' (action list, empty if unsolvable) and 'solve_time' (seconds).
+    On failure returns dict with 'error' and 'message'."""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -314,7 +306,7 @@ def numeric_planner(domain: str, problem: str) -> dict:
         return {"plan": plan, "solve_time": round(t2 - t1, 3)}
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False})
 def save_plan(
     plan: list,
     domain: str = None,
@@ -323,17 +315,8 @@ def save_plan(
     output_dir: str = None,
     solve_time: float = None,
 ) -> dict:
-    """
-    Saves a computed plan to a file with metadata header.
-
-    :param plan: List of action strings to save.
-    :param domain: Optional domain path or content (used to derive filename and metadata).
-    :param problem: Optional problem path or content (used to derive filename and metadata).
-    :param name: Optional name for the plan file. Overrides domain/problem-based naming.
-    :param output_dir: Optional directory to save the plan in. Accepts host paths. Defaults to ~/plans/.
-    :param solve_time: Optional solve time in seconds (included in file metadata header).
-    :return: Dict with 'file_path' (host path), 'container_path', and 'plan_length'.
-    """
+    """Saves a computed plan to a file with metadata header.
+    Returns dict with 'file_path' (path where plan was saved) and 'plan_length' (number of actions)."""
     # Tag derivation
     if name:
         tag = name
@@ -386,56 +369,49 @@ def save_plan(
     }
 
 
-@mcp.tool()
-def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> str:
-    """
-    Validates PDDL syntax and plans using VAL.
-
-    :param domain: File path or PDDL content string for the domain definition.
-    :param problem: Optional file path or PDDL content string for the problem.
-    :param plan: Optional file path or plan content string for the action sequence.
-    :return: Validation output from VAL.
-    """
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> dict:
+    """Validates PDDL domains, problems, and plans using the VAL validator.
+    Checks syntax when given domain only, checks problem consistency when given domain+problem,
+    and verifies plan correctness when given domain+problem+plan.
+    Returns dict with 'retcode', 'stdout', and 'stderr' from VAL.
+    On failure returns dict with 'error' and 'message'."""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
             pp = _ensure_file(problem, "problem.pddl", rd) if problem else None
             plp = _ensure_file(plan, "plan.solution", rd) if plan else None
         except FileNotFoundError as e:
-            return f"error: {e}"
+            return {"error": True, "message": str(e)}
 
         try:
             r = _run_val(dp, pp, plp)
         except subprocess.TimeoutExpired:
-            return f"error: VAL timed out after {DEFAULT_TIMEOUT}s"
+            return {"error": True, "message": f"VAL timed out after {DEFAULT_TIMEOUT}s"}
 
-        return f"retcode {r.returncode}\n{r.stdout}\n{r.stderr}".strip()
+        return {"retcode": r.returncode, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
 
 
-@mcp.tool()
-def get_state_transition(domain: str, problem: str, plan: str) -> str:
-    """
-    Simulates plan execution and returns state transitions using VAL verbose output.
-
-    :param domain: File path or PDDL content string for the domain definition.
-    :param problem: File path or PDDL content string for the problem definition.
-    :param plan: File path or plan content string for the solution.
-    :return: VAL verbose output showing state transitions.
-    """
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+def get_state_transition(domain: str, problem: str, plan: str) -> dict:
+    """Simulates plan execution step-by-step and returns the state after each action.
+    Use this to debug a plan or inspect intermediate states. For checking plan validity, use validate_pddl_syntax instead.
+    Returns dict with 'stdout' and 'stderr' from VAL verbose output.
+    On failure returns dict with 'error' and 'message'."""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
             pp = _ensure_file(problem, "problem.pddl", rd)
             plp = _ensure_file(plan, "plan.solution", rd)
         except FileNotFoundError as e:
-            return f"error: {e}"
+            return {"error": True, "message": str(e)}
 
         try:
             r = _run_val(dp, pp, plp)
         except subprocess.TimeoutExpired:
-            return f"error: VAL timed out after {DEFAULT_TIMEOUT}s"
+            return {"error": True, "message": f"VAL timed out after {DEFAULT_TIMEOUT}s"}
 
-        return f"{r.stdout}\n{r.stderr}".strip()
+        return {"stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
 
 
 if __name__ == "__main__":

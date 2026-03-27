@@ -67,7 +67,7 @@ Before committing the fix, review it:
 4. Does the fix maintain plugin isolation?
 
 ### Phase 4: Verify
-1. Run the plugin's verify/test script to confirm the fix (Tier 3: `docker/verify.sh`, Tier 1-2: the plugin's test script)
+1. Run the plugin's verify/test script to confirm the fix (Tier 3: `tests/verify.sh`, Tier 1-2: the plugin's test script)
 2. If the issue was in CI/CD, trigger a manual workflow run: `gh workflow run <workflow>`
 3. Report: what broke, why, what was fixed, verification result
 

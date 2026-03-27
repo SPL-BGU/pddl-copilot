@@ -1,0 +1,12 @@
+{
+  "name": "pddl-solver",
+  "version": "1.1.1",
+  "description": "Solve PDDL planning problems — supports classical and numeric (PDDL 2.1) domains. Runs in Docker.",
+  "author": {
+    "name": "SPL-BGU"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+  "repository": "https://github.com/SPL-BGU/pddl-copilot",
+  "keywords": ["pddl", "planning", "fast-downward", "metric-ff"]
+}

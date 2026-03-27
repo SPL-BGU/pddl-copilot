@@ -120,6 +120,8 @@ ln -sfn /absolute/path/to/plugins/pddl-validator/skills/pddl-validation ~/.gemin
 
 Replace `/absolute/path/to` with the actual path where you cloned this repo.
 
+For OS-specific setup (macOS, Linux, Windows/WSL2), see [docs/cross-platform-setup.md](docs/cross-platform-setup.md).
+
 ## Ollama MCP Bridge (Experimental)
 
 A CLI tool that connects local Ollama models to MCP plugins from this marketplace. Lets open-source LLMs use the same planning tools as Claude Code.
@@ -150,15 +152,7 @@ python3 ollama_mcp_bridge.py --model qwen3:4b --plugins pddl-solver,pddl-validat
 
 ## Adding a New Plugin
 
-1. Create a directory under `plugins/<your-plugin-name>/`
-2. Add the required plugin files:
-   - `.mcp.json` — MCP server configuration
-   - `CLAUDE.md` — enforcement rules for Claude
-   - `.claude/settings.json` — pre-approved tool permissions
-   - `skills/` — auto-discovered skills (optional)
-   - `scripts/` — launch scripts, etc.
-3. Add an entry to `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`
-4. Verify auto-discovery: `bash install_marketplace.sh`
+See [docs/contributing.md](docs/contributing.md#creating-a-new-plugin) for the full guide.
 
 ## Repository Structure
 
@@ -170,6 +164,11 @@ pddl-copilot/
 ├── .cursor-plugin/
 │   ├── plugin.json            # Cursor marketplace metadata
 │   └── marketplace.json       # Cursor plugin catalog
+├── docs/
+│   ├── architecture.md        # Architecture tiers, patterns, conventions
+│   ├── contributing.md        # How to contribute and create plugins
+│   ├── cross-platform-setup.md # macOS, Linux, Windows (WSL2) setup
+│   └── branch-testing.md     # Testing branches on other machines
 ├── docker/
 │   ├── Dockerfile             # Shared Docker image (FD, MFF, VAL)
 │   └── solvers_server_wrapper.py

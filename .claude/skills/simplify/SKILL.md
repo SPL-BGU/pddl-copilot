@@ -13,6 +13,6 @@ $ARGUMENTS
 If no specific target is given, review the most recent changes (check git diff or the current plan).
 
 Key reference files for convention review:
-- plugins/pddl-planning-copilot/docker/solvers_server_wrapper.py — MCP server patterns
-- plugins/pddl-planning-copilot/scripts/launch-server.sh — Launch script patterns
-- plugins/pddl-planning-copilot/docker/verify.sh — Smoke test patterns
+- plugins/pddl-solver/server/solver_server.py — MCP server patterns
+- plugins/pddl-solver/scripts/launch-server.sh — Launch script patterns
+- plugins/pddl-solver/tests/verify.sh — Smoke test patterns
