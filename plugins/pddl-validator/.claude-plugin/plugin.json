@@ -1,0 +1,12 @@
+{
+  "name": "pddl-validator",
+  "version": "1.1.1",
+  "description": "PDDL validation — validate PDDL syntax, plans, and simulate state transitions using VAL in Docker.",
+  "author": {
+    "name": "SPL-BGU"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+  "repository": "https://github.com/SPL-BGU/pddl-copilot",
+  "keywords": ["pddl", "validation", "val", "state-transition"]
+}
