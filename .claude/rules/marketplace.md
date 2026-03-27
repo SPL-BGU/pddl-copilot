@@ -30,20 +30,14 @@ paths:
 - **`plugins/<name>/.claude/settings.json`**: Pre-approved permissions for that plugin's tools.
 
 ### Adding a new plugin checklist
-1. Create `plugins/<name>/` directory
-2. Determine the architecture tier (see `.claude/rules/plugin-development.md`): Tier 1 (pure script), Tier 2 (system deps), or Tier 3 (Docker — only if binaries require compilation)
-3. Create `.mcp.json` with MCP server definition using `${CLAUDE_PLUGIN_ROOT}` for paths
-4. Create `CLAUDE.md` with enforcement rules
-5. Create `.claude/settings.json` with tool permissions
-6. Create `scripts/launch-server.sh` appropriate for the chosen tier
-7. Create the MCP server script (Python/Node)
-8. **(Tier 3 only)** Use the shared `docker/Dockerfile` image; create `tests/verify.sh`
-9. Create a verification/test script that exercises all MCP tools
-10. Create at least one skill under `skills/`
-11. Add entry to `.claude-plugin/marketplace.json`
-12. Add matching entry to `.cursor-plugin/marketplace.json`
-13. Verify auto-discovery: `bash install_marketplace.sh`
-14. Update root `README.md` and `CLAUDE.md` available plugins sections
+
+Full step-by-step guide: [docs/contributing.md](../../docs/contributing.md#creating-a-new-plugin)
+
+Enforcement points (agent must verify all):
+1. Plugin is fully self-contained under `plugins/<name>/`
+2. Has `.mcp.json` (with `${CLAUDE_PLUGIN_ROOT}`), `CLAUDE.md`, `.claude/settings.json`, at least one skill
+3. Registered in both `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`
+4. Architecture tier is the simplest possible (Tier 1 preferred)
 
 ### marketplace.json maintenance
 - Every plugin must have an entry in both `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`
