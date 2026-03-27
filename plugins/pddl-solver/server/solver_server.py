@@ -23,6 +23,7 @@ FD_PATH = os.environ.get("PDDL_FD_PATH", "/opt/planners/FastDownward")
 MFF_PATH = os.environ.get("PDDL_MFF_PATH", "/opt/planners/METRIC_FF")
 TEMP_DIR = os.environ.get("PDDL_TEMP_DIR", "/tmp/pddl")
 DEFAULT_TIMEOUT = int(os.environ.get("PDDL_TIMEOUT", "120"))
+DEFAULT_PLANS_DIR = "/workspace/plans"
 
 os.makedirs(TEMP_DIR, exist_ok=True)
 
@@ -90,6 +91,23 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
         f"HOST_PWD='{host_pwd}'. "
         f"Ensure the file is inside the mounted directory, or pass inline PDDL content instead."
     )
+
+
+def _host_to_container(path: str) -> str:
+    """Translate a host absolute path to a container path, or return as-is."""
+    host_pwd = os.environ.get("HOST_PWD", "")
+    if host_pwd and path.startswith(host_pwd):
+        return "/workspace/" + path[len(host_pwd):].lstrip("/")
+    return path
+
+
+def _container_to_host(path: str) -> str:
+    """Translate a container /workspace path to the host equivalent."""
+    host_pwd = os.environ.get("HOST_PWD", "")
+    if host_pwd and path.startswith("/workspace"):
+        relative = path[len("/workspace"):].lstrip("/")
+        return os.path.join(host_pwd, relative) if relative else host_pwd
+    return path
 
 
 def _run(args: list[str], cwd: str = None, timeout: int = None) -> subprocess.CompletedProcess:
@@ -278,28 +296,75 @@ def numeric_planner(domain: str, problem: str) -> dict:
 
 
 @mcp.tool()
-def save_plan(plan: list, domain: str = None, name: str = None) -> dict:
+def save_plan(
+    plan: list,
+    domain: str = None,
+    problem: str = None,
+    name: str = None,
+    output_dir: str = None,
+    solve_time: float = None,
+) -> dict:
     """
-    Saves a computed plan to a file.
+    Saves a computed plan to a file with metadata header.
 
     :param plan: List of action strings to save.
-    :param domain: Optional domain path or content (used to derive a filename).
-    :param name: Optional name for the plan file. Overrides domain-based naming.
-    :return: Dict with 'file_path' where the plan was saved.
+    :param domain: Optional domain path or content (used to derive filename and metadata).
+    :param problem: Optional problem path or content (used to derive filename and metadata).
+    :param name: Optional name for the plan file. Overrides domain/problem-based naming.
+    :param output_dir: Optional directory to save the plan in. Accepts host paths. Defaults to ~/plans/.
+    :param solve_time: Optional solve time in seconds (included in file metadata header).
+    :return: Dict with 'file_path' (host path), 'container_path', and 'plan_length'.
     """
+    # Tag derivation
     if name:
         tag = name
-    elif domain and not domain.strip().startswith("("):
-        # Use domain filename as base
-        tag = os.path.splitext(os.path.basename(domain.strip()))[0]
     else:
-        tag = uuid.uuid4().hex[:6]
+        parts = []
+        if domain and not domain.strip().startswith("(") and not domain.strip().startswith(";"):
+            dom_name = os.path.splitext(os.path.basename(domain.strip()))[0]
+            if dom_name.lower() != "domain":
+                parts.append(dom_name)
+        if problem and not problem.strip().startswith("(") and not problem.strip().startswith(";"):
+            prob_name = os.path.splitext(os.path.basename(problem.strip()))[0]
+            if prob_name.lower() != "problem":
+                parts.append(prob_name)
+        tag = "_".join(parts) if parts else uuid.uuid4().hex[:6]
 
-    filename = f"/workspace/plan_{tag}.solution"
-    with open(filename, "w") as f:
+    # Resolve output directory
+    if output_dir:
+        container_dir = _host_to_container(output_dir.strip())
+    else:
+        container_dir = DEFAULT_PLANS_DIR
+    os.makedirs(container_dir, exist_ok=True)
+
+    # Avoid overwriting existing files
+    filepath = os.path.join(container_dir, f"plan_{tag}.solution")
+    if os.path.exists(filepath):
+        counter = 1
+        while os.path.exists(os.path.join(container_dir, f"plan_{tag}_{counter}.solution")):
+            counter += 1
+        filepath = os.path.join(container_dir, f"plan_{tag}_{counter}.solution")
+
+    # Write file with metadata header
+    with open(filepath, "w") as f:
+        f.write(f"; Plan generated at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
+        if domain and not domain.strip().startswith("(") and not domain.strip().startswith(";"):
+            f.write(f"; Domain: {os.path.basename(domain.strip())}\n")
+        if problem and not problem.strip().startswith("(") and not problem.strip().startswith(";"):
+            f.write(f"; Problem: {os.path.basename(problem.strip())}\n")
+        if solve_time is not None:
+            f.write(f"; Solve time: {solve_time}s\n")
+        f.write(f"; Plan length: {len(plan)} actions\n")
+        f.write("\n")
         for action in plan:
             f.write(str(action) + "\n")
-    return {"file_path": filename}
+
+    host_path = _container_to_host(filepath)
+    return {
+        "file_path": host_path,
+        "container_path": filepath,
+        "plan_length": len(plan),
+    }
 
 
 if __name__ == "__main__":

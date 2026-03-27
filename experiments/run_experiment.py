@@ -678,6 +678,8 @@ async def async_main(args):
     mcp = MCPPlanner()
     await mcp.connect()
 
+    single_results: list[TaskResult] = []
+    chain_results: list[dict] = []
     try:
         # Ground truth
         print("\nGenerating ground truth (solving all problems with planners)...")
@@ -696,7 +698,6 @@ async def async_main(args):
         print_single_task_table(single_results)
 
         # Multi-task chains
-        chain_results: list[dict] = []
         if args.chains:
             print("\n--- Multi-Task Chain Evaluation ---")
             chain_results = await run_chain_experiment(
@@ -709,10 +710,12 @@ async def async_main(args):
             )
             print_chain_table(chain_results)
 
-        # Save
-        save_results(single_results, chain_results, Path(args.output_dir))
+    except KeyboardInterrupt:
+        print("\n\nInterrupted — saving partial results...")
 
     finally:
+        if single_results:
+            save_results(single_results, chain_results, Path(args.output_dir))
         await mcp.close()
 
 
