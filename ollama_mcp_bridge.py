@@ -178,7 +178,7 @@ async def chat_loop(model, ollama_tools, tool_to_session):
         if user_input.startswith("/set think"):
             parts = user_input.split()
 
-            if len(parts) == 2:
+            if len(parts) == 2 and parts[1] == "think":
                 think_mode = True
                 print("Set 'think' mode.\n")
             elif len(parts) == 3 and parts[2] in ["low", "medium", "high"]:
