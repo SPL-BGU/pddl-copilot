@@ -175,7 +175,7 @@ async def chat_loop(model, ollama_tools, tool_to_session):
             think_mode = False
             print("Set 'nothink' mode.\n")
             continue
-        if user_input.split()[:2] == ["/set", "think"]:
+        if user_input.startswith("/set think"):
             parts = user_input.split()
 
             if len(parts) == 2:
