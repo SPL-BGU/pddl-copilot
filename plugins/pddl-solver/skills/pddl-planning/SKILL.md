@@ -21,7 +21,7 @@ Both work. When the user provides PDDL inline or you need to create PDDL, pass t
 
 - `classic_planner(domain, problem, strategy?)` — Fast Downward. For classical PDDL (no :functions). Optional `strategy` parameter: `"lazy_greedy_cea"` (default), `"astar_lmcut"` (optimal), `"lazy_greedy_ff"`.
 - `numeric_planner(domain, problem)` — Metric-FF. For PDDL 2.1 with numeric fluents.
-- `save_plan(plan, domain?, name?)` — Saves a plan list to a file. Returns a dict with `file_path`.
+- `save_plan(plan, domain?, problem?, name?, output_dir?, solve_time?)` — Saves a plan list to `~/plans/` with a metadata header. Returns a dict with `file_path` (host path), `container_path`, and `plan_length`. Pass `domain` and `problem` (as paths) for informative filenames. Pass `solve_time` from the planner result to include it in the header.
 
 ### Mandatory workflow for EVERY planning request:
 
@@ -30,7 +30,7 @@ Both work. When the user provides PDDL inline or you need to create PDDL, pass t
    - Has `:functions`, `:durative-action`, `increase`, `decrease` → `numeric_planner`
    - Only `:predicates` and `:action` → `classic_planner`
 3. **Call the appropriate planner** with the content or paths. It returns a dict with `plan` (action list) and `solve_time` (seconds).
-4. **Save the plan** using `save_plan` to get a plan file path.
+4. **Save the plan** using `save_plan(plan=result["plan"], domain=..., problem=..., solve_time=result["solve_time"])` to get a plan file path.
 5. **Report** the plan and timing to the user. If the `pddl-validator` plugin is also installed, suggest validating the plan.
 
 ### What you MUST NOT do:

@@ -39,7 +39,10 @@ from mcp.client.stdio import stdio_client
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
-PLUGIN_DIR = REPO_ROOT / "plugins" / "pddl-planning-copilot"
+PLUGIN_DIRS = [
+    REPO_ROOT / "plugins" / "pddl-solver",
+    REPO_ROOT / "plugins" / "pddl-validator",
+]
 DOMAINS_DIR = SCRIPT_DIR / "domains"
 RESULTS_DIR = SCRIPT_DIR / "results"
 
@@ -136,48 +139,53 @@ class TaskResult:
 
 
 class MCPPlanner:
-    """Manages a stdio connection to the PDDL planning MCP server."""
+    """Manages stdio connections to PDDL MCP servers (solver + validator)."""
 
     def __init__(self):
         self.stack = AsyncExitStack()
-        self.session: ClientSession | None = None
         self.tools: list[dict] = []
+        self._tool_to_session: dict[str, ClientSession] = {}
 
     async def connect(self):
-        launch_script = PLUGIN_DIR / "scripts" / "launch-server.sh"
-        if not launch_script.exists():
-            sys.exit(f"Launch script not found: {launch_script}")
+        for plugin_dir in PLUGIN_DIRS:
+            launch_script = plugin_dir / "scripts" / "launch-server.sh"
+            if not launch_script.exists():
+                print(f"  Warning: launch script not found: {launch_script}, skipping")
+                continue
 
-        server_params = StdioServerParameters(
-            command="bash",
-            args=[str(launch_script)],
-            env={**os.environ, "HOST_PWD": os.getcwd()},
-        )
-        read_stream, write_stream = await self.stack.enter_async_context(
-            stdio_client(server_params)
-        )
-        self.session = await self.stack.enter_async_context(
-            ClientSession(read_stream, write_stream)
-        )
-        await self.session.initialize()
+            server_params = StdioServerParameters(
+                command="bash",
+                args=[str(launch_script)],
+                env={**os.environ, "HOST_PWD": os.getcwd()},
+            )
+            read_stream, write_stream = await self.stack.enter_async_context(
+                stdio_client(server_params)
+            )
+            session = await self.stack.enter_async_context(
+                ClientSession(read_stream, write_stream)
+            )
+            await session.initialize()
 
-        tools_result = await self.session.list_tools()
-        self.tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": t.name,
-                    "description": t.description or "",
-                    "parameters": t.inputSchema,
-                },
-            }
-            for t in tools_result.tools
-        ]
-        names = [t["function"]["name"] for t in self.tools]
-        print(f"  MCP connected — tools: {names}")
+            tools_result = await session.list_tools()
+            for t in tools_result.tools:
+                self.tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description or "",
+                        "parameters": t.inputSchema,
+                    },
+                })
+                self._tool_to_session[t.name] = session
+
+            names = [t.name for t in tools_result.tools]
+            print(f"  MCP connected ({plugin_dir.name}) — tools: {names}")
 
     async def call_tool(self, name: str, arguments: dict) -> str:
-        result = await self.session.call_tool(name, arguments=arguments)
+        session = self._tool_to_session.get(name)
+        if not session:
+            raise ValueError(f"Tool '{name}' not found in any connected MCP server")
+        result = await session.call_tool(name, arguments=arguments)
         return result.content[0].text if result.content else ""
 
     async def close(self):
@@ -666,10 +674,12 @@ async def async_main(args):
         print(f"    {dname} ({dinfo['type']}): {len(dinfo['problems'])} problems")
 
     # Connect MCP
-    print("\nConnecting to MCP planning server...")
+    print("\nConnecting to MCP servers...")
     mcp = MCPPlanner()
     await mcp.connect()
 
+    single_results: list[TaskResult] = []
+    chain_results: list[dict] = []
     try:
         # Ground truth
         print("\nGenerating ground truth (solving all problems with planners)...")
@@ -688,7 +698,6 @@ async def async_main(args):
         print_single_task_table(single_results)
 
         # Multi-task chains
-        chain_results: list[dict] = []
         if args.chains:
             print("\n--- Multi-Task Chain Evaluation ---")
             chain_results = await run_chain_experiment(
@@ -701,10 +710,12 @@ async def async_main(args):
             )
             print_chain_table(chain_results)
 
-        # Save
-        save_results(single_results, chain_results, Path(args.output_dir))
+    except KeyboardInterrupt:
+        print("\n\nInterrupted — saving partial results...")
 
     finally:
+        if single_results:
+            save_results(single_results, chain_results, Path(args.output_dir))
         await mcp.close()
 
 

@@ -69,14 +69,37 @@ else
     echo -e "${RED}FAILED${NC}"
 fi
 
-# 3. save_plan
+# 3. save_plan (metadata + default dir)
 echo -n "save_plan...              "
 if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "
 python3 -c \"
 from pddl_server import save_plan
-result = save_plan(['(pick-up a)', '(stack a b)'], name='test')
-print(result['file_path'])
-\"" 2>/dev/null | grep -q "plan_test.solution"; then
+result = save_plan(['(pick-up a)', '(stack a b)'], name='test', solve_time=0.5)
+assert '/plans/plan_test.solution' in result['container_path'], f'Unexpected path: {result}'
+with open(result['container_path']) as f:
+    content = f.read()
+assert '; Plan generated at' in content
+assert '; Solve time: 0.5s' in content
+assert '; Plan length: 2 actions' in content
+assert '(pick-up a)' in content
+print('OK')
+\"" 2>/dev/null | grep -q "OK"; then
+    echo -e "${GREEN}OK${NC}"
+else
+    echo -e "${RED}FAILED${NC}"
+fi
+
+# 4. save_plan (anti-overwrite)
+echo -n "save_plan anti-overwrite.. "
+if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "
+python3 -c \"
+from pddl_server import save_plan
+r1 = save_plan(['(pick-up a)'], name='dup')
+r2 = save_plan(['(stack a b)'], name='dup')
+assert r1['container_path'] != r2['container_path'], 'Should not overwrite'
+assert '_1.solution' in r2['container_path'], f'Expected counter: {r2}'
+print('OK')
+\"" 2>/dev/null | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
     echo -e "${RED}FAILED${NC}"
