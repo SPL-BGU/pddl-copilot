@@ -105,15 +105,17 @@ def _run_val(domain_path: str, problem_path: str = None,
 # MCP Tools
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
-def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> str:
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> dict:
     """
-    Validates PDDL syntax and plans using VAL.
+    Validates PDDL syntax and plans using VAL. Use when checking whether PDDL
+    domain/problem definitions are syntactically correct or whether a plan is valid.
+    Accepts inline PDDL content strings or file paths.
 
     :param domain: File path or PDDL content string for the domain definition.
     :param problem: Optional file path or PDDL content string for the problem.
     :param plan: Optional file path or plan content string for the action sequence.
-    :return: Validation output from VAL.
+    :return: Dict with 'retcode', 'stdout', and 'stderr' from VAL.
     """
     with _request_dir() as rd:
         try:
@@ -121,25 +123,27 @@ def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> 
             pp = _ensure_file(problem, "problem.pddl", rd) if problem else None
             plp = _ensure_file(plan, "plan.solution", rd) if plan else None
         except FileNotFoundError as e:
-            return f"error: {e}"
+            return {"error": True, "message": str(e)}
 
         try:
             r = _run_val(dp, pp, plp)
         except subprocess.TimeoutExpired:
-            return f"error: VAL timed out after {DEFAULT_TIMEOUT}s"
+            return {"error": True, "message": f"VAL timed out after {DEFAULT_TIMEOUT}s"}
 
-        return f"retcode {r.returncode}\n{r.stdout}\n{r.stderr}".strip()
+        return {"retcode": r.returncode, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
 
 
-@mcp.tool()
-def get_state_transition(domain: str, problem: str, plan: str) -> str:
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+def get_state_transition(domain: str, problem: str, plan: str) -> dict:
     """
     Simulates plan execution and returns state transitions using VAL verbose output.
+    Use after solving to inspect how each action changes the world state.
+    Accepts inline PDDL content strings or file paths.
 
     :param domain: File path or PDDL content string for the domain definition.
     :param problem: File path or PDDL content string for the problem definition.
     :param plan: File path or plan content string for the solution.
-    :return: VAL verbose output showing state transitions.
+    :return: Dict with 'stdout' and 'stderr' from VAL verbose output.
     """
     with _request_dir() as rd:
         try:
@@ -147,14 +151,14 @@ def get_state_transition(domain: str, problem: str, plan: str) -> str:
             pp = _ensure_file(problem, "problem.pddl", rd)
             plp = _ensure_file(plan, "plan.solution", rd)
         except FileNotFoundError as e:
-            return f"error: {e}"
+            return {"error": True, "message": str(e)}
 
         try:
             r = _run_val(dp, pp, plp)
         except subprocess.TimeoutExpired:
-            return f"error: VAL timed out after {DEFAULT_TIMEOUT}s"
+            return {"error": True, "message": f"VAL timed out after {DEFAULT_TIMEOUT}s"}
 
-        return f"{r.stdout}\n{r.stderr}".strip()
+        return {"stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
 
 
 if __name__ == "__main__":

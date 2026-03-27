@@ -192,11 +192,12 @@ def _parse_mff_plan(stdout: str) -> list[str]:
 # MCP Tools
 # ---------------------------------------------------------------------------
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def classic_planner(domain: str, problem: str, strategy: str = "lazy_greedy_cea") -> dict:
     """
     Computes a plan for a classical PDDL planning problem using Fast Downward.
     Does NOT support numeric fluents or durative actions.
+    Accepts inline PDDL content strings or file paths.
 
     :param domain: File path or PDDL content string for the domain definition.
     :param problem: File path or PDDL content string for the problem definition.
@@ -250,11 +251,12 @@ def classic_planner(domain: str, problem: str, strategy: str = "lazy_greedy_cea"
         return {"plan": plan, "solve_time": round(t2 - t1, 3)}
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def numeric_planner(domain: str, problem: str) -> dict:
     """
     Computes a plan for a PDDL 2.1 planning problem with numeric fluents
     using Metric-FF.
+    Accepts inline PDDL content strings or file paths.
 
     :param domain: File path or PDDL content string for the domain definition.
     :param problem: File path or PDDL content string for the problem definition.
@@ -295,7 +297,7 @@ def numeric_planner(domain: str, problem: str) -> dict:
         return {"plan": plan, "solve_time": round(t2 - t1, 3)}
 
 
-@mcp.tool()
+@mcp.tool(annotations={"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False})
 def save_plan(
     plan: list,
     domain: str = None,
