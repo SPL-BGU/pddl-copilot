@@ -1,6 +1,7 @@
 ---
 name: pddl-validation
 description: Activates when the user asks to write, create, edit, fix, or debug PDDL domain or problem files, or check if a plan is correct.
+allowed-tools: mcp__pddl-validator__validate_pddl_syntax, mcp__pddl-validator__get_state_transition
 ---
 
 ## Rules for PDDL authoring and validation
