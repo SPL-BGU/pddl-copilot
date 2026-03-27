@@ -39,7 +39,7 @@ from mcp.client.stdio import stdio_client
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
-PLUGIN_DIR = REPO_ROOT / "plugins" / "pddl-planning-copilot"
+PLUGIN_DIR = REPO_ROOT / "plugins" / "pddl-solver"
 DOMAINS_DIR = SCRIPT_DIR / "domains"
 RESULTS_DIR = SCRIPT_DIR / "results"
 

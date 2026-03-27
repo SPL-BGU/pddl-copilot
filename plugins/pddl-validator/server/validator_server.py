@@ -42,8 +42,8 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
     """Write PDDL content to a temp file, or translate host paths to container paths."""
     stripped = content_or_path.strip()
 
-    # Inline PDDL content — write to temp file
-    if stripped.startswith("("):
+    # Inline PDDL content — write to temp file (may start with ; comments)
+    if stripped.startswith("(") or stripped.startswith(";") or "(define " in stripped:
         path = os.path.join(req_dir, name)
         with open(path, "w") as f:
             f.write(content_or_path)
