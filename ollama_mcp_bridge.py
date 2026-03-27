@@ -305,7 +305,8 @@ async def main():
         print(f"\nTools available ({len(ollama_tools)}):")
         for t in ollama_tools:
             fn = t["function"]
-            print(f"  - {fn['name']}: {fn['description'][:80]}")
+            desc = fn['description'].split('\n')[0]
+            print(f"  - {fn['name']}: {desc}")
 
         await chat_loop(model, ollama_tools, tool_to_session)
 
