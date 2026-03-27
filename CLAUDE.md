@@ -8,6 +8,7 @@ This repository is a Claude Code plugin marketplace. Each plugin lives in its ow
 - `.claude-plugin/plugin.json` — marketplace-level metadata
 - `plugins/<plugin-name>/` — each plugin with its own `CLAUDE.md`, `.mcp.json`, skills, scripts, etc.
 - `docker/` — shared Docker image build (Dockerfile for Fast Downward, Metric-FF, VAL)
+  - **`solvers_server_wrapper.py`** is baked into the Docker image but **overridden at runtime** by each plugin's own server script (volume-mounted). Modifying the wrapper triggers a Docker image rebuild + GHCR re-push via CI. Only update it when intentionally changing the baked-in fallback — prefer editing the plugin servers (`plugins/<name>/server/`) for MCP-facing changes.
 - `install_marketplace.sh` — unified Cursor/Antigravity installer (auto-discovers all plugins)
 
 ## Available Plugins
