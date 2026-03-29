@@ -6,7 +6,9 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 """
 
 from contextlib import contextmanager
+from typing import Annotated, Literal
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 import glob as globmod
 import os
 import shutil
@@ -212,7 +214,11 @@ def _run_val(domain_path: str, problem_path: str = None,
 # ---------------------------------------------------------------------------
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
-def classic_planner(domain: str, problem: str, strategy: str = "lazy_greedy_cea") -> dict:
+def classic_planner(
+    domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
+    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
+    strategy: Annotated[Literal["lazy_greedy_cea", "astar_lmcut", "lazy_greedy_ff"], Field(description="Search strategy: 'lazy_greedy_cea' (fast, default), 'astar_lmcut' (optimal), 'lazy_greedy_ff' (fast, alternative).")] = "lazy_greedy_cea",
+) -> dict:
     """Computes a plan for a classical PDDL planning problem using Fast Downward.
     Does NOT support numeric fluents or durative actions — use numeric_planner for those.
     Returns dict with 'plan' (action list, empty if unsolvable) and 'solve_time' (seconds).
@@ -265,7 +271,10 @@ def classic_planner(domain: str, problem: str, strategy: str = "lazy_greedy_cea"
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
-def numeric_planner(domain: str, problem: str) -> dict:
+def numeric_planner(
+    domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
+    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
+) -> dict:
     """Computes a plan for a PDDL problem with numeric fluents (:functions, increase, decrease) using Metric-FF.
     Use this instead of classic_planner when the domain uses :functions or numeric effects.
     Does NOT support durative/temporal actions.
@@ -308,12 +317,12 @@ def numeric_planner(domain: str, problem: str) -> dict:
 
 @mcp.tool(annotations={"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False})
 def save_plan(
-    plan: list,
-    domain: str = None,
-    problem: str = None,
-    name: str = None,
-    output_dir: str = None,
-    solve_time: float = None,
+    plan: Annotated[list, Field(description="List of action strings to save.")],
+    domain: Annotated[str, Field(description="Domain path or content (used to derive filename and metadata).")] = None,
+    problem: Annotated[str, Field(description="Problem path or content (used to derive filename and metadata).")] = None,
+    name: Annotated[str, Field(description="Name for the plan file. Overrides domain/problem-based naming.")] = None,
+    output_dir: Annotated[str, Field(description="Directory to save the plan in. Defaults to ~/plans/.")] = None,
+    solve_time: Annotated[float, Field(description="Solve time in seconds (included in file metadata header).")] = None,
 ) -> dict:
     """Saves a computed plan to a file with metadata header.
     Returns dict with 'file_path' (path where plan was saved) and 'plan_length' (number of actions)."""
@@ -370,12 +379,17 @@ def save_plan(
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
-def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> dict:
+def validate_pddl_syntax(
+    domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
+    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem.")] = None,
+    plan: Annotated[str, Field(description="Plan content string or absolute file path for the action sequence to validate.")] = None,
+) -> dict:
     """Validates PDDL domains, problems, and plans using the VAL validator.
     Checks syntax when given domain only, checks problem consistency when given domain+problem,
     and verifies plan correctness when given domain+problem+plan.
-    Returns dict with 'retcode', 'stdout', and 'stderr' from VAL.
-    On failure returns dict with 'error' and 'message'."""
+    Returns:
+        Success: {"retcode": int, "stdout": str, "stderr": str}
+        Error: {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -393,11 +407,16 @@ def validate_pddl_syntax(domain: str, problem: str = None, plan: str = None) -> 
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
-def get_state_transition(domain: str, problem: str, plan: str) -> dict:
+def get_state_transition(
+    domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
+    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
+    plan: Annotated[str, Field(description="Plan content string or absolute file path for the solution to simulate.")],
+) -> dict:
     """Simulates plan execution step-by-step and returns the state after each action.
     Use this to debug a plan or inspect intermediate states. For checking plan validity, use validate_pddl_syntax instead.
-    Returns dict with 'stdout' and 'stderr' from VAL verbose output.
-    On failure returns dict with 'error' and 'message'."""
+    Returns:
+        Success: {"retcode": int, "stdout": str, "stderr": str}
+        Error: {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -411,7 +430,7 @@ def get_state_transition(domain: str, problem: str, plan: str) -> dict:
         except subprocess.TimeoutExpired:
             return {"error": True, "message": f"VAL timed out after {DEFAULT_TIMEOUT}s"}
 
-        return {"stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
+        return {"retcode": r.returncode, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
 
 
 if __name__ == "__main__":
