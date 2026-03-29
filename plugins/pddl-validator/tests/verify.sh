@@ -64,7 +64,7 @@ else
     cat "$ERRLOG" >&2
 fi
 
-# 2. VAL via validate_pddl_syntax
+# 2. VAL via validate_pddl_syntax (retcode=0 means VAL parsed and validated successfully)
 echo -n "validate_pddl_syntax...   "
 if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "$SETUP
 python3 -c \"
@@ -79,7 +79,7 @@ else
     cat "$ERRLOG" >&2
 fi
 
-# 3. get_state_transition
+# 3. get_state_transition (VAL outputs "Checking" header and "Plan Repair Advice" section)
 echo -n "get_state_transition...   "
 if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "$SETUP
 python3 -c \"

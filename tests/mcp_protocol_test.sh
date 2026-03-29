@@ -19,8 +19,8 @@ echo "=== MCP Protocol Smoke Tests ==="
 echo "Image: $IMAGE"
 echo ""
 
-# Python script that uses the mcp SDK client to connect to the server via stdio,
-# calls tools/list, and verifies all expected tools are registered.
+# Python script that uses the mcp SDK client (installed in the Docker image as a
+# FastMCP dependency) to connect via stdio and verify all expected tools are registered.
 MCP_LIST_SCRIPT='
 import asyncio
 import sys

@@ -7,6 +7,9 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 FAILURES=0
 
+ERRLOG=$(mktemp)
+trap 'rm -f "$ERRLOG"' EXIT
+
 pass() { echo -e "  ${GREEN}OK${NC}  $1"; }
 fail() { echo -e "  ${RED}FAIL${NC} $1"; FAILURES=$((FAILURES + 1)); }
 
@@ -122,19 +125,21 @@ echo ""
 echo "--- Python syntax ---"
 for server_py in "$REPO_ROOT"/plugins/*/server/*.py; do
     label="${server_py#$REPO_ROOT/}"
-    if python3 -m py_compile "$server_py" 2>/dev/null; then
+    if python3 -m py_compile "$server_py" 2>"$ERRLOG"; then
         pass "$label"
     else
         fail "$label — syntax error"
+        cat "$ERRLOG" >&2
     fi
 done
 # Also check the Docker wrapper
 wrapper="$REPO_ROOT/docker/solvers_server_wrapper.py"
 if [ -f "$wrapper" ]; then
-    if python3 -m py_compile "$wrapper" 2>/dev/null; then
+    if python3 -m py_compile "$wrapper" 2>"$ERRLOG"; then
         pass "docker/solvers_server_wrapper.py"
     else
         fail "docker/solvers_server_wrapper.py — syntax error"
+        cat "$ERRLOG" >&2
     fi
 fi
 
