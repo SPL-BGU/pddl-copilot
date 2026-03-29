@@ -13,6 +13,7 @@ jobs:
   static-checks:
     name: Static Checks
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -26,6 +27,7 @@ jobs:
   plugin-tests:
     name: Plugin Integration Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     needs: static-checks
     steps:
       - uses: actions/checkout@v4
@@ -46,6 +48,7 @@ jobs:
   mcp-protocol:
     name: MCP Protocol Smoke Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: static-checks
     steps:
       - uses: actions/checkout@v4

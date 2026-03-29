@@ -96,7 +96,7 @@ See `plugins/pddl-solver/scripts/launch-server.sh` for the reference implementat
 
 **Docker image publishing** (`docker-publish.yml`): After pushing changes to `docker/Dockerfile` or `docker/solvers_server_wrapper.py`, GitHub Actions builds and pushes a new multi-arch image to `ghcr.io/spl-bgu/pddl-sandbox:latest`. Users get the updated image on their next session.
 
-**Integration tests** (`integration.yml`): Runs on every PR targeting `main`. See [docs/contributing.md](../docs/contributing.md#verification) for the full test suite.
+**Integration tests** (`integration.yml`): Runs on every PR targeting `main`. See [contributing.md](contributing.md#verification) for the full test suite.
 
 ## Skill Conventions
 

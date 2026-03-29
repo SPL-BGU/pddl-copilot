@@ -8,7 +8,7 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 FAILURES=0
 
 pass() { echo -e "  ${GREEN}OK${NC}  $1"; }
-fail() { echo -e "  ${RED}FAIL${NC} $1"; ((FAILURES++)); }
+fail() { echo -e "  ${RED}FAIL${NC} $1"; FAILURES=$((FAILURES + 1)); }
 
 echo "=== Static Checks ==="
 echo ""
@@ -169,6 +169,7 @@ for tool in data.get('permissions', {}).get('allow', []):
 " "$settings" "$server_name")
 
     # Get @mcp.tool decorated function names from server files
+    # Handles both @mcp.tool() (uses function name) and @mcp.tool(name='custom')
     server_tools=$(python3 -c "
 import ast, sys, os
 for f in sorted(os.listdir(sys.argv[1])):
@@ -179,7 +180,13 @@ for f in sorted(os.listdir(sys.argv[1])):
             for dec in node.decorator_list:
                 src = ast.dump(dec)
                 if 'mcp' in src and 'tool' in src:
-                    print(node.name)
+                    # Check for explicit name= keyword argument
+                    tool_name = node.name
+                    if isinstance(dec, ast.Call):
+                        for kw in dec.keywords:
+                            if kw.arg == 'name' and isinstance(kw.value, ast.Constant):
+                                tool_name = kw.value.value
+                    print(tool_name)
 " "$plugin_dir/server")
 
     # Compare: every settings tool should exist in server

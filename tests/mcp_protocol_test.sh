@@ -10,7 +10,10 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 FAILURES=0
 
 pass() { echo -e "  ${GREEN}OK${NC}  $1"; }
-fail() { echo -e "  ${RED}FAIL${NC} $1"; ((FAILURES++)); }
+fail() { echo -e "  ${RED}FAIL${NC} $1"; FAILURES=$((FAILURES + 1)); }
+
+ERRLOG=$(mktemp)
+trap 'rm -f "$ERRLOG"' EXIT
 
 echo "=== MCP Protocol Smoke Tests ==="
 echo "Image: $IMAGE"
@@ -53,10 +56,11 @@ if docker run --rm \
     -v "${SOLVER_SERVER}:/opt/server/pddl_server.py:ro" \
     "$IMAGE" \
     python3 -c "$MCP_LIST_SCRIPT" "classic_planner,numeric_planner,save_plan" \
-    2>/dev/null | grep -q "ALL_TOOLS_OK"; then
+    2>"$ERRLOG" | grep -q "ALL_TOOLS_OK"; then
     pass "all 3 tools registered"
 else
     fail "pddl-solver tools/list"
+    cat "$ERRLOG" >&2
 fi
 
 echo ""
@@ -67,10 +71,11 @@ if docker run --rm \
     -v "${VALIDATOR_SERVER}:/opt/server/pddl_server.py:ro" \
     "$IMAGE" \
     python3 -c "$MCP_LIST_SCRIPT" "validate_pddl_syntax,get_state_transition" \
-    2>/dev/null | grep -q "ALL_TOOLS_OK"; then
+    2>"$ERRLOG" | grep -q "ALL_TOOLS_OK"; then
     pass "all 2 tools registered"
 else
     fail "pddl-validator tools/list"
+    cat "$ERRLOG" >&2
 fi
 
 # ---------------------------------------------------------------------------

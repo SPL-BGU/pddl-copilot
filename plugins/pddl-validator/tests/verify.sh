@@ -9,6 +9,9 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 
 FAILURES=0
 
+ERRLOG=$(mktemp)
+trap 'rm -f "$ERRLOG"' EXIT
+
 echo "Testing pddl-validator plugin"
 echo "Image: $IMAGE"
 echo "Server: $SERVER_SCRIPT"
@@ -54,10 +57,11 @@ echo -n "Server imports...         "
 if docker run --rm $MOUNT_SERVER "$IMAGE" python3 -c "
 from pddl_server import validate_pddl_syntax, get_state_transition
 print('OK')
-" 2>/dev/null | grep -q "OK"; then
+" 2>"$ERRLOG" | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
 # 2. VAL via validate_pddl_syntax
@@ -68,10 +72,11 @@ from pddl_server import validate_pddl_syntax
 result = validate_pddl_syntax('/tmp/test/domain.pddl', '/tmp/test/problem.pddl')
 print('retcode=' + str(result.get('retcode', 'N/A')))
 print(result.get('stdout', '')[:200])
-\"" 2>/dev/null | grep -Eqi "retcode=|checking"; then
+\"" 2>"$ERRLOG" | grep -q "retcode=0"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
 # 3. get_state_transition
@@ -81,10 +86,11 @@ python3 -c \"
 from pddl_server import get_state_transition
 trace = get_state_transition('/tmp/test/domain.pddl', '/tmp/test/problem.pddl', '/tmp/test/plan.solution')
 print(trace.get('stdout', '')[:300])
-\"" 2>/dev/null | grep -Eqi "plan|checking|executing"; then
+\"" 2>"$ERRLOG" | grep -Eqi "Checking|Plan Repair"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
 echo ""
