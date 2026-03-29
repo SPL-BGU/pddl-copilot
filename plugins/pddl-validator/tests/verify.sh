@@ -7,6 +7,8 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_SCRIPT="$PLUGIN_ROOT/server/validator_server.py"
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 
+FAILURES=0
+
 echo "Testing pddl-validator plugin"
 echo "Image: $IMAGE"
 echo "Server: $SERVER_SCRIPT"
@@ -55,7 +57,7 @@ print('OK')
 " 2>/dev/null | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
 fi
 
 # 2. VAL via validate_pddl_syntax
@@ -69,7 +71,7 @@ print(result.get('stdout', '')[:200])
 \"" 2>/dev/null | grep -Eqi "retcode=|checking"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
 fi
 
 # 3. get_state_transition
@@ -82,8 +84,12 @@ print(trace.get('stdout', '')[:300])
 \"" 2>/dev/null | grep -Eqi "plan|checking|executing"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
 fi
 
 echo ""
-echo "Done."
+if [ "$FAILURES" -gt 0 ]; then
+    echo -e "${RED}${FAILURES} test(s) failed.${NC}"
+    exit 1
+fi
+echo "All tests passed."

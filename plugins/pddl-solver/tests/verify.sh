@@ -7,6 +7,8 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_SCRIPT="$PLUGIN_ROOT/server/solver_server.py"
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 
+FAILURES=0
+
 echo "Testing pddl-solver plugin"
 echo "Image: $IMAGE"
 echo "Server: $SERVER_SCRIPT"
@@ -50,7 +52,7 @@ print('OK')
 " 2>/dev/null | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
 fi
 
 # 2. Fast Downward via classic_planner
@@ -66,7 +68,7 @@ for a in plan: print(a)
 \"" 2>/dev/null | grep -Eqi "pick-up|stack|actions"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
 fi
 
 # 3. save_plan (metadata + default dir)
@@ -86,7 +88,7 @@ print('OK')
 \"" 2>/dev/null | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
 fi
 
 # 4. save_plan (anti-overwrite)
@@ -102,8 +104,12 @@ print('OK')
 \"" 2>/dev/null | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; ((FAILURES++))
 fi
 
 echo ""
-echo "Done."
+if [ "$FAILURES" -gt 0 ]; then
+    echo -e "${RED}${FAILURES} test(s) failed.${NC}"
+    exit 1
+fi
+echo "All tests passed."
