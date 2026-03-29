@@ -114,12 +114,24 @@ Add your plugin to the "Available Plugins" section in both `CLAUDE.md` and `READ
 Each plugin must have a test/verify script that exercises all declared MCP tools.
 
 ```bash
+# Plugin smoke tests (Docker required)
 bash plugins/<name>/tests/verify.sh
+
+# Static checks — JSON validity, marketplace consistency, Python syntax,
+# settings ↔ server tool alignment (no Docker)
+bash tests/static_checks.sh
+
+# MCP protocol test — verifies tools/list via stdio transport (Docker required)
+bash tests/mcp_protocol_test.sh
 ```
 
 - If `.mcp.json` exposes N tools, the verify script must test all N
 - Use inline test data — don't depend on external fixture files
 - Run verification before committing server or infrastructure changes
+
+### CI
+
+PRs targeting `main` are gated by `.github/workflows/integration.yml`, which runs all three test layers (static checks, plugin verify scripts, MCP protocol tests). PRs cannot merge until all checks pass.
 
 ## Testing a Branch
 

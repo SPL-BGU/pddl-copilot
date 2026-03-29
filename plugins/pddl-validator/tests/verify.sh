@@ -7,6 +7,11 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_SCRIPT="$PLUGIN_ROOT/server/validator_server.py"
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 
+FAILURES=0
+
+ERRLOG=$(mktemp)
+trap 'rm -f "$ERRLOG"' EXIT
+
 echo "Testing pddl-validator plugin"
 echo "Image: $IMAGE"
 echo "Server: $SERVER_SCRIPT"
@@ -52,13 +57,14 @@ echo -n "Server imports...         "
 if docker run --rm $MOUNT_SERVER "$IMAGE" python3 -c "
 from pddl_server import validate_pddl_syntax, get_state_transition
 print('OK')
-" 2>/dev/null | grep -q "OK"; then
+" 2>"$ERRLOG" | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
-# 2. VAL via validate_pddl_syntax
+# 2. VAL via validate_pddl_syntax (retcode=0 means VAL parsed and validated successfully)
 echo -n "validate_pddl_syntax...   "
 if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "$SETUP
 python3 -c \"
@@ -66,24 +72,30 @@ from pddl_server import validate_pddl_syntax
 result = validate_pddl_syntax('/tmp/test/domain.pddl', '/tmp/test/problem.pddl')
 print('retcode=' + str(result.get('retcode', 'N/A')))
 print(result.get('stdout', '')[:200])
-\"" 2>/dev/null | grep -Eqi "retcode=|checking"; then
+\"" 2>"$ERRLOG" | grep -q "retcode=0"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
-# 3. get_state_transition
+# 3. get_state_transition (VAL outputs "Checking" header and "Plan Repair Advice" section)
 echo -n "get_state_transition...   "
 if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "$SETUP
 python3 -c \"
 from pddl_server import get_state_transition
 trace = get_state_transition('/tmp/test/domain.pddl', '/tmp/test/problem.pddl', '/tmp/test/plan.solution')
 print(trace.get('stdout', '')[:300])
-\"" 2>/dev/null | grep -Eqi "plan|checking|executing"; then
+\"" 2>"$ERRLOG" | grep -Eqi "Checking|Plan Repair"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
 echo ""
-echo "Done."
+if [ "$FAILURES" -gt 0 ]; then
+    echo -e "${RED}${FAILURES} test(s) failed.${NC}"
+    exit 1
+fi
+echo "All tests passed."

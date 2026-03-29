@@ -34,7 +34,9 @@ Available dev skills:
 
 ## Verification
 
-Run the affected plugin's verify script before committing server changes. See [docs/contributing.md](docs/contributing.md#verification).
+Run the affected plugin's verify script before committing server changes. CI gates PRs with static checks, plugin tests, and MCP protocol validation. See [docs/contributing.md](docs/contributing.md#verification).
+
+Root-level `tests/` contains cross-plugin test infrastructure (static checks, MCP protocol tests). Plugin-specific tests live in `plugins/<name>/tests/`.
 
 ## Adding a New Plugin
 
