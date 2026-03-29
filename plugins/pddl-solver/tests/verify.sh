@@ -7,6 +7,11 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 SERVER_SCRIPT="$PLUGIN_ROOT/server/solver_server.py"
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 
+FAILURES=0
+
+ERRLOG=$(mktemp)
+trap 'rm -f "$ERRLOG"' EXIT
+
 echo "Testing pddl-solver plugin"
 echo "Image: $IMAGE"
 echo "Server: $SERVER_SCRIPT"
@@ -47,10 +52,11 @@ echo -n "Server imports...         "
 if docker run --rm $MOUNT_SERVER "$IMAGE" python3 -c "
 from pddl_server import classic_planner, numeric_planner, save_plan
 print('OK')
-" 2>/dev/null | grep -q "OK"; then
+" 2>"$ERRLOG" | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
 # 2. Fast Downward via classic_planner
@@ -63,10 +69,11 @@ plan = result['plan']
 t = result['solve_time']
 print(f'Plan: {len(plan)} actions in {t:.2f}s')
 for a in plan: print(a)
-\"" 2>/dev/null | grep -Eqi "pick-up|stack|actions"; then
+\"" 2>"$ERRLOG" | grep -Eqi "pick-up|stack|actions"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
 # 3. save_plan (metadata + default dir)
@@ -83,10 +90,11 @@ assert '; Solve time: 0.5s' in content
 assert '; Plan length: 2 actions' in content
 assert '(pick-up a)' in content
 print('OK')
-\"" 2>/dev/null | grep -q "OK"; then
+\"" 2>"$ERRLOG" | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
 # 4. save_plan (anti-overwrite)
@@ -99,11 +107,16 @@ r2 = save_plan(['(stack a b)'], name='dup')
 assert r1['container_path'] != r2['container_path'], 'Should not overwrite'
 assert '_1.solution' in r2['container_path'], f'Expected counter: {r2}'
 print('OK')
-\"" 2>/dev/null | grep -q "OK"; then
+\"" 2>"$ERRLOG" | grep -q "OK"; then
     echo -e "${GREEN}OK${NC}"
 else
-    echo -e "${RED}FAILED${NC}"
+    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+    cat "$ERRLOG" >&2
 fi
 
 echo ""
-echo "Done."
+if [ "$FAILURES" -gt 0 ]; then
+    echo -e "${RED}${FAILURES} test(s) failed.${NC}"
+    exit 1
+fi
+echo "All tests passed."
