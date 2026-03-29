@@ -29,12 +29,20 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: static-checks
+    permissions:
+      packages: read
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull Docker image
         run: docker pull ${{ env.IMAGE }}
@@ -50,8 +58,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     needs: static-checks
+    permissions:
+      packages: read
     steps:
       - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull Docker image
         run: docker pull ${{ env.IMAGE }}
