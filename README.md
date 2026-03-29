@@ -189,7 +189,12 @@ pddl-copilot/
 │       ├── skills/pddl-validation/
 │       ├── scripts/launch-server.sh
 │       └── tests/verify.sh
-├── .github/workflows/         # CI/CD (shared)
+├── tests/
+│   ├── static_checks.sh       # Config & structure validation (no Docker)
+│   └── mcp_protocol_test.sh   # MCP stdio protocol smoke tests
+├── .github/workflows/
+│   ├── docker-publish.yml     # Multi-arch Docker image build & push
+│   └── integration.yml        # PR gate: static checks + plugin tests + MCP protocol
 ├── install_marketplace.sh     # Unified Cursor/Antigravity installer
 ├── CLAUDE.md                  # Marketplace-level instructions
 ├── ollama_mcp_bridge.py       # Ollama MCP Bridge CLI

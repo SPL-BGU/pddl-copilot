@@ -33,6 +33,7 @@ Every SKILL.md must have YAML frontmatter (`name`, `description`), lead with man
 2. **Test every declared tool**: If `.mcp.json` exposes 5 tools, the verify script must test all 5.
 3. **Inline test data**: Do not depend on external fixture files. Define test data in the verify script.
 4. **Run verification before committing server changes**: This is the equivalent of "tests must pass".
+5. **CI enforces all tests**: PRs to `main` are gated by integration tests. See [docs/contributing.md](../../docs/contributing.md#verification).
 
 ### Launch script and Docker patterns
 
