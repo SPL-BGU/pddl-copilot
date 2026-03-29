@@ -116,8 +116,9 @@ def validate_pddl_syntax(
     """Validates PDDL domains, problems, and plans using the VAL validator.
     Checks syntax when given domain only, checks problem consistency when given domain+problem,
     and verifies plan correctness when given domain+problem+plan.
-    Returns dict with 'retcode', 'stdout', and 'stderr' from VAL.
-    On failure returns dict with 'error' and 'message'."""
+    Returns:
+        Success: {"retcode": int, "stdout": str, "stderr": str}
+        Error: {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -142,8 +143,9 @@ def get_state_transition(
 ) -> dict:
     """Simulates plan execution step-by-step and returns the state after each action.
     Use this to debug a plan or inspect intermediate states. For checking plan validity, use validate_pddl_syntax instead.
-    Returns dict with 'stdout' and 'stderr' from VAL verbose output.
-    On failure returns dict with 'error' and 'message'."""
+    Returns:
+        Success: {"retcode": int, "stdout": str, "stderr": str}
+        Error: {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -157,7 +159,7 @@ def get_state_transition(
         except subprocess.TimeoutExpired:
             return {"error": True, "message": f"VAL timed out after {DEFAULT_TIMEOUT}s"}
 
-        return {"stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
+        return {"retcode": r.returncode, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
 
 
 if __name__ == "__main__":
