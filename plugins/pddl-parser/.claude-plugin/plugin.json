@@ -1,6 +1,6 @@
 {
   "name": "pddl-parser",
-  "version": "0.1.0",
+  "version": "1.2.0",
   "description": "Parse PDDL domains, problems, and plans — generate structured state-action trajectories. Pure Python, no Docker.",
   "author": {
     "name": "SPL-BGU"
