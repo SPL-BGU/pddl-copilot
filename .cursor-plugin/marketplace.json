@@ -36,6 +36,20 @@
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
       "keywords": ["pddl", "validation", "val", "state-transition"]
+    },
+    {
+      "name": "pddl-parser",
+      "description": "Parse PDDL domains, problems, and plans — generate structured state-action trajectories. Pure Python, no Docker.",
+      "source": "./plugins/pddl-parser",
+      "author": {
+        "name": "SPL-BGU"
+      },
+      "license": "MIT",
+      "version": "0.1.0",
+      "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+      "repository": "https://github.com/SPL-BGU/pddl-copilot",
+      "category": "planning",
+      "keywords": ["pddl", "parser", "trajectory", "state-transition"]
     }
   ]
 }

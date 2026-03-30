@@ -74,3 +74,21 @@ jobs:
 
       - name: MCP tools/list validation
         run: bash tests/mcp_protocol_test.sh ${{ env.IMAGE }}
+
+  pddl-parser-tests:
+    name: pddl-parser Tests (Tier 1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: static-checks
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Test pddl-parser
+        run: bash plugins/pddl-parser/tests/verify.sh

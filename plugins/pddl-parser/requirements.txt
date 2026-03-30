@@ -1,0 +1,7 @@
+mcp
+pydantic
+pddl-plus-parser
+# pddl-plus-parser undeclared transitive dependencies
+sympy
+anytree
+networkx

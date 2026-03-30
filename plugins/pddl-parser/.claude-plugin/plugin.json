@@ -1,0 +1,12 @@
+{
+  "name": "pddl-parser",
+  "version": "0.1.0",
+  "description": "Parse PDDL domains, problems, and plans — generate structured state-action trajectories. Pure Python, no Docker.",
+  "author": {
+    "name": "SPL-BGU"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+  "repository": "https://github.com/SPL-BGU/pddl-copilot",
+  "keywords": ["pddl", "parser", "trajectory", "state-transition"]
+}
