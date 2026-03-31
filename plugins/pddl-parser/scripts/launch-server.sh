@@ -15,6 +15,14 @@ if [ ! -d "$VENV_DIR" ]; then
         python3 -m venv "$VENV_DIR"
         "$VENV_DIR/bin/pip" install --quiet -r "$PLUGIN_DIR/requirements.txt"
     fi
+    # Install optional dependencies (non-fatal)
+    if [ -f "$PLUGIN_DIR/requirements-optional.txt" ]; then
+        if command -v uv &>/dev/null; then
+            uv pip install --python "$VENV_DIR/bin/python3" -r "$PLUGIN_DIR/requirements-optional.txt" 2>/dev/null || true
+        else
+            "$VENV_DIR/bin/pip" install --quiet -r "$PLUGIN_DIR/requirements-optional.txt" 2>/dev/null || true
+        fi
+    fi
     echo "[pddl-parser] Ready." >&2
 fi
 

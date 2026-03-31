@@ -19,15 +19,24 @@ allowed-tools: mcp__pddl-parser__get_trajectory, mcp__pddl-parser__inspect_domai
 - **File paths**: absolute paths to existing `.pddl` files
 - **State parameters**: either the string `"initial"` or a JSON array of predicate strings like `["(clear a)", "(on a b)"]`
 
+## Parser Backends
+
+Tools that accept a `parser` parameter can use either backend:
+- **pddl-plus-parser** (default, always available): Full STRIPS/numeric support
+- **unified-planning** (optional): Alternative parser with different PDDL coverage
+
+When `parser` is null (default), the server tries pddl-plus-parser first, then falls back to unified-planning if available. Responses include a `parser_used` field indicating which backend produced the result.
+
 ## Tools
 
-### `inspect_domain(domain)` -> structured JSON
+### `inspect_domain(domain, parser?)` -> structured JSON
 
 Returns the domain's name, requirements, type hierarchy, predicates with parameter signatures, and actions with parameters, preconditions, and effects.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `domain`  | Yes | PDDL domain content string or absolute file path |
+| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
 
 **Returns:**
 ```json
@@ -40,7 +49,7 @@ Returns the domain's name, requirements, type hierarchy, predicates with paramet
 }
 ```
 
-### `inspect_problem(domain, problem)` -> structured JSON
+### `inspect_problem(domain, problem, parser?)` -> structured JSON
 
 Returns the problem's name, objects with types, initial state predicates, goal conditions, and counts.
 
@@ -48,6 +57,7 @@ Returns the problem's name, objects with types, initial state predicates, goal c
 |-----------|----------|-------------|
 | `domain`  | Yes | PDDL domain content string or absolute file path |
 | `problem` | Yes | PDDL problem content string or absolute file path |
+| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
 
 **Returns:**
 ```json
@@ -60,7 +70,7 @@ Returns the problem's name, objects with types, initial state predicates, goal c
 }
 ```
 
-### `check_applicable(domain, problem, state, action)` -> applicability report
+### `check_applicable(domain, problem, state, action, parser?)` -> applicability report
 
 Checks whether a grounded action is applicable in a given state. Reports which preconditions are satisfied/unsatisfied and what effects would be applied.
 
@@ -70,6 +80,7 @@ Checks whether a grounded action is applicable in a given state. Reports which p
 | `problem` | Yes | PDDL problem content string or absolute file path |
 | `state`   | Yes | `"initial"` or JSON array of predicate strings |
 | `action`  | Yes | Grounded action call, e.g. `"(pick-up a)"` |
+| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
 
 **Returns:**
 ```json
@@ -82,7 +93,7 @@ Checks whether a grounded action is applicable in a given state. Reports which p
 }
 ```
 
-### `get_trajectory(domain, problem, plan)` -> trajectory JSON
+### `get_trajectory(domain, problem, plan, parser?)` -> trajectory JSON
 
 Parses domain and problem, simulates plan step-by-step, returns full state-action-state trajectory.
 
@@ -91,6 +102,7 @@ Parses domain and problem, simulates plan step-by-step, returns full state-actio
 | `domain`  | Yes | PDDL domain content string or absolute file path |
 | `problem` | Yes | PDDL problem content string or absolute file path |
 | `plan`    | Yes | Plan content (one action per line) or absolute file path |
+| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
 
 **Returns:**
 ```json
@@ -136,7 +148,7 @@ Parses PDDL domain content and re-serializes in normalized form. Lightweight Tie
 {"valid": true, "type": "domain", "normalized": "(define (domain ...) ...)", "warnings": []}
 ```
 
-### `get_applicable_actions(domain, problem, state, max_results)` -> action list
+### `get_applicable_actions(domain, problem, state, max_results, parser?)` -> action list
 
 Enumerates all applicable grounded actions in a given state.
 
@@ -146,6 +158,7 @@ Enumerates all applicable grounded actions in a given state.
 | `problem` | Yes | PDDL problem content string or absolute file path |
 | `state`   | No | `"initial"` (default) or JSON array of predicate strings |
 | `max_results` | No | Maximum results to return (default: 50) |
+| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
 
 **Returns:**
 ```json

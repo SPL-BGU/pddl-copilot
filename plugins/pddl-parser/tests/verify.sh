@@ -185,6 +185,76 @@ assert "error" not in result, f"check_applicable with state list error: {result}
 assert result["applicable"] is True, f"expected applicable=True for stack a b after picking up a"
 print("OK")
 
+# Test 13: parser_used field present in responses
+print("TEST:PARSER_USED:", end="")
+result = get_trajectory(DOMAIN, PROBLEM, PLAN)
+assert "parser_used" in result, f"missing 'parser_used' key: {result}"
+assert result["parser_used"] in ("pddl-plus-parser", "unified-planning"), f"unexpected parser_used: {result['parser_used']}"
+result2 = inspect_domain(DOMAIN)
+assert "parser_used" in result2, f"missing 'parser_used' in inspect_domain"
+result3 = inspect_problem(DOMAIN, PROBLEM)
+assert "parser_used" in result3, f"missing 'parser_used' in inspect_problem"
+result4 = check_applicable(DOMAIN, PROBLEM, "initial", "(pick-up a)")
+assert "parser_used" in result4, f"missing 'parser_used' in check_applicable"
+result5 = get_applicable_actions(DOMAIN, PROBLEM, "initial")
+assert "parser_used" in result5, f"missing 'parser_used' in get_applicable_actions"
+print("OK")
+
+# Test 14: Invalid parser name returns error
+print("TEST:INVALID_PARSER:", end="")
+result = get_trajectory(DOMAIN, PROBLEM, PLAN, parser="nonexistent")
+assert "error" in result, f"expected error for invalid parser, got {result}"
+print("OK")
+
+# Test 15-19: UP backend (skip if not installed)
+try:
+    from backend_up import UnifiedPlanningBackend
+    UP_AVAILABLE = True
+except ImportError:
+    UP_AVAILABLE = False
+
+if UP_AVAILABLE:
+    print("TEST:UP_TRAJECTORY:", end="")
+    result = get_trajectory(DOMAIN, PROBLEM, PLAN, parser="unified-planning")
+    assert "error" not in result, f"UP trajectory error: {result}"
+    assert result["num_steps"] == 2, f"expected 2 steps, got {result['num_steps']}"
+    assert result["parser_used"] == "unified-planning"
+    print("OK")
+
+    print("TEST:UP_INSPECT_PROBLEM:", end="")
+    result = inspect_problem(DOMAIN, PROBLEM, parser="unified-planning")
+    assert "error" not in result, f"UP inspect_problem error: {result}"
+    assert result["num_objects"] == 2
+    assert result["num_init_facts"] == 5
+    assert result["parser_used"] == "unified-planning"
+    print("OK")
+
+    print("TEST:UP_CHECK_APPLICABLE:", end="")
+    result = check_applicable(DOMAIN, PROBLEM, "initial", "(pick-up a)", parser="unified-planning")
+    assert "error" not in result, f"UP check_applicable error: {result}"
+    assert result["applicable"] is True
+    assert result["parser_used"] == "unified-planning"
+    print("OK")
+
+    print("TEST:UP_CHECK_INAPPLICABLE:", end="")
+    result = check_applicable(DOMAIN, PROBLEM, "initial", "(stack a b)", parser="unified-planning")
+    assert "error" not in result, f"UP check error: {result}"
+    assert result["applicable"] is False
+    assert len(result["unsatisfied_preconditions"]) > 0
+    print("OK")
+
+    print("TEST:UP_APPLICABLE_ACTIONS:", end="")
+    result = get_applicable_actions(DOMAIN, PROBLEM, "initial", parser="unified-planning")
+    assert "error" not in result, f"UP applicable_actions error: {result}"
+    action_set = set(result["applicable_actions"])
+    assert "(pick-up a)" in action_set, f"expected '(pick-up a)': {action_set}"
+    assert "(pick-up b)" in action_set, f"expected '(pick-up b)': {action_set}"
+    assert result["parser_used"] == "unified-planning"
+    print("OK")
+else:
+    for name in ["UP_TRAJECTORY", "UP_INSPECT_PROBLEM", "UP_CHECK_APPLICABLE", "UP_CHECK_INAPPLICABLE", "UP_APPLICABLE_ACTIONS"]:
+        print(f"TEST:{name}:SKIP")
+
 print("TEST:DONE")
 PYEOF
 
@@ -194,12 +264,16 @@ RESULT=$($PYTHON -c "$TEST_SCRIPT" "$PLUGIN_ROOT" 2>"$ERRLOG")
 # Check each test
 for TEST_NAME in IMPORT TRAJECTORY ERROR_HANDLING INSPECT_DOMAIN INSPECT_PROBLEM \
     CHECK_APPLICABLE_YES CHECK_APPLICABLE_NO DIFF_STATES NORMALIZE_PDDL \
-    NORMALIZE_PDDL_INVALID GET_APPLICABLE_ACTIONS CHECK_APPLICABLE_STATE_LIST; do
+    NORMALIZE_PDDL_INVALID GET_APPLICABLE_ACTIONS CHECK_APPLICABLE_STATE_LIST \
+    PARSER_USED INVALID_PARSER \
+    UP_TRAJECTORY UP_INSPECT_PROBLEM UP_CHECK_APPLICABLE UP_CHECK_INAPPLICABLE UP_APPLICABLE_ACTIONS; do
 
     LABEL=$(echo "$TEST_NAME" | tr '_' ' ' | tr '[:upper:]' '[:lower:]')
     printf "%-40s" "$LABEL..."
     if echo "$RESULT" | grep -q "TEST:${TEST_NAME}:OK"; then
         echo -e "${GREEN}OK${NC}"
+    elif echo "$RESULT" | grep -q "TEST:${TEST_NAME}:SKIP"; then
+        echo -e "SKIP"
     else
         echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
         # Show the specific failure line
