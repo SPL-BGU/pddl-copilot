@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "PDDL planning tools marketplace",
-    "version": "1.2.0",
+    "version": "1.1.1",
     "pluginRoot": "plugins"
   },
   "plugins": [
@@ -17,7 +17,7 @@
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.2.0",
+      "version": "1.1.1",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
@@ -31,7 +31,7 @@
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.2.0",
+      "version": "1.1.1",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
@@ -45,7 +45,7 @@
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.2.0",
+      "version": "1.1.1",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",

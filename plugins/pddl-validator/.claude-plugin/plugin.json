@@ -1,6 +1,6 @@
 {
   "name": "pddl-validator",
-  "version": "1.2.0",
+  "version": "1.1.1",
   "description": "Validate PDDL domains, problems, and plans — check syntax, verify plan correctness, and inspect state transitions. Runs in Docker.",
   "author": {
     "name": "SPL-BGU"
