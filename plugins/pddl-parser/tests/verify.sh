@@ -150,13 +150,18 @@ assert "(clear a)" in result["removed"], f"expected '(clear a)' in removed: {res
 assert "(clear b)" in result["unchanged"], f"expected '(clear b)' in unchanged: {result['unchanged']}"
 print("OK")
 
-# Test 9: normalize_pddl
+# Test 9: normalize_pddl (default output is json)
 print("TEST:NORMALIZE_PDDL:", end="")
 result = normalize_pddl(DOMAIN)
 assert result["valid"] is True, f"expected valid=True, got {result}"
 assert result["type"] == "domain", f"expected type='domain', got {result['type']}"
 assert result["normalized"] is not None, f"expected normalized content"
-assert "(define" in result["normalized"], f"expected PDDL content in normalized"
+assert isinstance(result["normalized"], dict), f"expected dict for json output, got {type(result['normalized'])}"
+assert "name" in result["normalized"], f"expected 'name' in normalized json"
+# Also test pddl output format
+result_pddl = normalize_pddl(DOMAIN, output_format="pddl")
+assert result_pddl["valid"] is True
+assert "(define" in result_pddl["normalized"], f"expected PDDL content in pddl format"
 print("OK")
 
 # Test 10: normalize_pddl with invalid content
@@ -185,7 +190,43 @@ assert "error" not in result, f"check_applicable with state list error: {result}
 assert result["applicable"] is True, f"expected applicable=True for stack a b after picking up a"
 print("OK")
 
-# Test 13: parser_used field present in responses
+# Test 13: normalize_pddl with problem (no domain — lightweight parse)
+print("TEST:NORMALIZE_PROBLEM_NODOMAIN:", end="")
+result = normalize_pddl(PROBLEM)
+assert result["valid"] is True, f"expected valid=True, got {result}"
+assert result["type"] == "problem", f"expected type='problem', got {result['type']}"
+n = result["normalized"]
+assert n["name"] == "bw1", f"expected name='bw1', got {n['name']}"
+assert n["num_objects"] == 2, f"expected 2 objects, got {n['num_objects']}"
+assert n["num_init_facts"] == 5, f"expected 5 init, got {n['num_init_facts']}"
+assert n["num_goal_conditions"] == 1, f"expected 1 goal, got {n['num_goal_conditions']}"
+assert len(result["warnings"]) > 0, f"expected warning about missing domain"
+print("OK")
+
+# Test 14: normalize_pddl with problem + domain (full parse)
+print("TEST:NORMALIZE_PROBLEM_DOMAIN:", end="")
+result = normalize_pddl(PROBLEM, domain=DOMAIN)
+assert result["valid"] is True, f"expected valid=True, got {result}"
+assert result["type"] == "problem"
+n = result["normalized"]
+assert n["num_objects"] == 2
+assert n["num_init_facts"] == 5
+assert n["num_goal_conditions"] == 1
+assert "parser_used" in n, f"expected parser_used in full parse"
+print("OK")
+
+# Test 15: inspect_domain with problem (grounded details)
+print("TEST:INSPECT_DOMAIN_GROUNDED:", end="")
+result = inspect_domain(DOMAIN, problem=PROBLEM)
+assert "error" not in result, f"inspect_domain with problem error: {result}"
+assert "objects" in result, f"expected 'objects' when problem provided"
+assert len(result["objects"]) == 2, f"expected 2 objects, got {len(result['objects'])}"
+assert "init" in result, f"expected 'init' when problem provided"
+assert "goal" in result, f"expected 'goal' when problem provided"
+assert len(result["actions"]) > 0, f"expected actions from domain"
+print("OK")
+
+# Test 16: parser_used field present
 print("TEST:PARSER_USED:", end="")
 result = get_trajectory(DOMAIN, PROBLEM, PLAN)
 assert "parser_used" in result, f"missing 'parser_used' key: {result}"
@@ -265,6 +306,7 @@ RESULT=$($PYTHON -c "$TEST_SCRIPT" "$PLUGIN_ROOT" 2>"$ERRLOG")
 for TEST_NAME in IMPORT TRAJECTORY ERROR_HANDLING INSPECT_DOMAIN INSPECT_PROBLEM \
     CHECK_APPLICABLE_YES CHECK_APPLICABLE_NO DIFF_STATES NORMALIZE_PDDL \
     NORMALIZE_PDDL_INVALID GET_APPLICABLE_ACTIONS CHECK_APPLICABLE_STATE_LIST \
+    NORMALIZE_PROBLEM_NODOMAIN NORMALIZE_PROBLEM_DOMAIN INSPECT_DOMAIN_GROUNDED \
     PARSER_USED INVALID_PARSER \
     UP_TRAJECTORY UP_INSPECT_PROBLEM UP_CHECK_APPLICABLE UP_CHECK_INAPPLICABLE UP_APPLICABLE_ACTIONS; do
 

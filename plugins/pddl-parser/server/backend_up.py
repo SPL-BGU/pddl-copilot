@@ -15,15 +15,15 @@ from unified_planning.shortcuts import SequentialSimulator
 from unified_planning.plans import ActionInstance
 
 from backends import (
+    MAX_GROUNDING_ATTEMPTS,
     ApplicabilityResult,
     ApplicableActionsResult,
     DomainInfo,
     ProblemInfo,
     TrajectoryResult,
     TrajectoryStep,
+    parse_action_call,
 )
-
-MAX_GROUNDING_ATTEMPTS = 10_000
 
 
 class UnifiedPlanningBackend:
@@ -39,7 +39,7 @@ class UnifiedPlanningBackend:
             return obj_type == param_type
 
     @staticmethod
-    def _get_object_combinations(fluent, up_problem) -> list:
+    def _get_object_combinations(fluent, up_problem):
         param_types = [param.type for param in fluent.signature]
         object_lists = []
         for req_type in param_types:
@@ -48,7 +48,7 @@ class UnifiedPlanningBackend:
                 if UnifiedPlanningBackend._type_matches(obj.type, req_type)
             ]
             object_lists.append(matching)
-        return list(itertools.product(*object_lists))
+        return itertools.product(*object_lists)
 
     @staticmethod
     def _state_to_preds(state, up_problem) -> list[str]:
@@ -92,14 +92,6 @@ class UnifiedPlanningBackend:
                 raise ValueError(f"Object '{pname}' not found in problem")
             param_objects.append(found)
         return param_objects
-
-    @staticmethod
-    def _parse_action_call(action_str: str) -> tuple:
-        s = action_str.strip()
-        if s.startswith("(") and s.endswith(")"):
-            s = s[1:-1]
-        parts = s.split()
-        return parts[0], parts[1:]
 
     def _build_state_from_preds(self, state_preds: list[str], up_problem, simulator):
         """Reconstruct a UP state from a predicate string list.
@@ -196,21 +188,21 @@ class UnifiedPlanningBackend:
 
     # -- Protocol methods --------------------------------------------------
 
-    def parse_domain_and_problem(self, domain_path: str, problem_path: str) -> Any:
+    def _parse(self, domain_path: str, problem_path: str) -> Any:
         reader = PDDLReader()
         return reader.parse_problem(domain_path, problem_path)
 
     def get_trajectory(
         self, domain_path: str, problem_path: str, actions: list[str]
     ) -> TrajectoryResult:
-        up_problem = self.parse_domain_and_problem(domain_path, problem_path)
+        up_problem = self._parse(domain_path, problem_path)
         simulator = SequentialSimulator(up_problem)
         state = simulator.get_initial_state()
 
         steps = []
         for action_str in actions:
             state_preds = self._state_to_preds(state, up_problem)
-            action_name, param_names = self._parse_action_call(action_str)
+            action_name, param_names = parse_action_call(action_str)
 
             schema = self._find_action_schema(up_problem, action_name)
             if schema is None:
@@ -247,7 +239,7 @@ class UnifiedPlanningBackend:
             with open(dummy_path, "w") as f:
                 f.write(dummy_problem)
 
-            up_problem = self.parse_domain_and_problem(domain_path, dummy_path)
+            up_problem = self._parse(domain_path, dummy_path)
             return self._extract_domain_info(up_problem, domain_name)
         finally:
             import shutil
@@ -256,7 +248,7 @@ class UnifiedPlanningBackend:
     def inspect_problem(
         self, domain_path: str, problem_path: str
     ) -> ProblemInfo:
-        up_problem = self.parse_domain_and_problem(domain_path, problem_path)
+        up_problem = self._parse(domain_path, problem_path)
         simulator = SequentialSimulator(up_problem)
         init_state = simulator.get_initial_state()
         init_preds = self._state_to_preds(init_state, up_problem)
@@ -287,11 +279,11 @@ class UnifiedPlanningBackend:
         state_preds: Optional[list[str]],
         action_str: str,
     ) -> ApplicabilityResult:
-        up_problem = self.parse_domain_and_problem(domain_path, problem_path)
+        up_problem = self._parse(domain_path, problem_path)
         simulator = SequentialSimulator(up_problem)
         state = self._resolve_state(state_preds, up_problem, simulator)
 
-        action_name, param_names = self._parse_action_call(action_str)
+        action_name, param_names = parse_action_call(action_str)
         schema = self._find_action_schema(up_problem, action_name)
         if schema is None:
             raise ValueError(f"Unknown action: '{action_name}'")
@@ -345,7 +337,7 @@ class UnifiedPlanningBackend:
         state_preds: Optional[list[str]],
         max_results: int,
     ) -> ApplicableActionsResult:
-        up_problem = self.parse_domain_and_problem(domain_path, problem_path)
+        up_problem = self._parse(domain_path, problem_path)
         simulator = SequentialSimulator(up_problem)
         state = self._resolve_state(state_preds, up_problem, simulator)
 
@@ -414,12 +406,6 @@ class UnifiedPlanningBackend:
             truncated=truncated or grounding_cap_hit,
             warning=warning,
         )
-
-    def state_to_predicate_list(
-        self, state: Any, domain_path: str, problem_path: str
-    ) -> list[str]:
-        up_problem = self.parse_domain_and_problem(domain_path, problem_path)
-        return self._state_to_preds(state, up_problem)
 
     # -- domain introspection helpers --------------------------------------
 

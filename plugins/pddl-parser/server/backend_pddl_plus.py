@@ -5,10 +5,8 @@ Extracted from parser_server.py. All predicate strings use s-expression format.
 """
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 import itertools
-import json
-import re
 
 from pddl_plus_parser.exporters import TrajectoryExporter
 from pddl_plus_parser.lisp_parsers import DomainParser, ProblemParser
@@ -17,20 +15,16 @@ from pddl_plus_parser.models.pddl_predicate import GroundedPredicate
 from pddl_plus_parser.models.pddl_state import State
 
 from backends import (
+    MAX_GROUNDING_ATTEMPTS,
     ApplicabilityResult,
     ApplicableActionsResult,
     DomainInfo,
     ProblemInfo,
     TrajectoryResult,
     TrajectoryStep,
+    compact_pddl,
+    parse_action_call,
 )
-
-MAX_GROUNDING_ATTEMPTS = 10_000
-
-
-def _compact_pddl(s: str) -> str:
-    """Collapse internal whitespace in a PDDL expression to single spaces."""
-    return re.sub(r"\s+", " ", s).strip()
 
 
 class PddlPlusBackend:
@@ -124,26 +118,12 @@ class PddlPlusBackend:
                 current_type = getattr(current_type, "parent", None)
         return objects_by_type
 
-    @staticmethod
-    def _parse_action_call(action_str: str) -> tuple:
-        s = action_str.strip()
-        if s.startswith("(") and s.endswith(")"):
-            s = s[1:-1]
-        parts = s.split()
-        return parts[0], parts[1:]
-
     # -- Protocol methods --------------------------------------------------
-
-    def parse_domain_and_problem(self, domain_path: str, problem_path: str) -> Any:
-        return self._parse(domain_path, problem_path)
 
     def get_trajectory(
         self, domain_path: str, problem_path: str, actions: list[str]
     ) -> TrajectoryResult:
-        parsed_domain = DomainParser(Path(domain_path)).parse_domain()
-        parsed_problem = ProblemParser(
-            problem_path=Path(problem_path), domain=parsed_domain
-        ).parse_problem()
+        parsed_domain, parsed_problem = self._parse(domain_path, problem_path)
 
         exporter = TrajectoryExporter(domain=parsed_domain)
         triplets = exporter.parse_plan(parsed_problem, action_sequence=actions)
@@ -183,8 +163,8 @@ class PddlPlusBackend:
             actions_info.append({
                 "name": action.name,
                 "parameters": {k: v.name for k, v in action.signature.items()},
-                "precondition": _compact_pddl(str(action.preconditions)),
-                "effect": _compact_pddl(action.effects_to_pddl()),
+                "precondition": compact_pddl(str(action.preconditions)),
+                "effect": compact_pddl(action.effects_to_pddl()),
             })
 
         return DomainInfo(
@@ -230,7 +210,7 @@ class PddlPlusBackend:
     ) -> ApplicabilityResult:
         parsed_domain, parsed_problem = self._parse(domain_path, problem_path)
         resolved_state = self._resolve_state(state_preds, parsed_domain, parsed_problem)
-        action_name, action_objects = self._parse_action_call(action_str)
+        action_name, action_objects = parse_action_call(action_str)
 
         if action_name not in parsed_domain.actions:
             raise ValueError(f"Unknown action: '{action_name}'")
@@ -374,9 +354,3 @@ class PddlPlusBackend:
             warning=warning,
         )
 
-    def state_to_predicate_list(
-        self, state: Any, domain_path: str, problem_path: str
-    ) -> list[str]:
-        if isinstance(state, State):
-            return self._state_to_preds(state)
-        raise TypeError(f"Expected pddl-plus-parser State, got {type(state)}")

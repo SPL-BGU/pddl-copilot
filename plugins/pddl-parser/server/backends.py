@@ -6,8 +6,29 @@ All predicate strings use PDDL s-expression format: (pred obj1 obj2)
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol, runtime_checkable
+
+# ---------------------------------------------------------------------------
+# Shared constants and utilities
+# ---------------------------------------------------------------------------
+
+MAX_GROUNDING_ATTEMPTS = 10_000
+
+
+def parse_action_call(action_str: str) -> tuple:
+    """Parse '(pick-up a)' into ('pick-up', ['a']). Returns (name, object_list)."""
+    s = action_str.strip()
+    if s.startswith("(") and s.endswith(")"):
+        s = s[1:-1]
+    parts = s.split()
+    return parts[0], parts[1:]
+
+
+def compact_pddl(s: str) -> str:
+    """Collapse internal whitespace in a PDDL expression to single spaces."""
+    return re.sub(r"\s+", " ", s).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -69,24 +90,15 @@ class ApplicableActionsResult:
 class PDDLBackend(Protocol):
     name: str
 
-    def parse_domain_and_problem(
-        self, domain_path: str, problem_path: str
-    ) -> Any:
-        """Parse domain and problem files. Returns backend-specific objects."""
-        ...
-
     def get_trajectory(
         self, domain_path: str, problem_path: str, actions: list[str]
-    ) -> TrajectoryResult:
-        ...
+    ) -> TrajectoryResult: ...
 
-    def inspect_domain(self, domain_path: str) -> DomainInfo:
-        ...
+    def inspect_domain(self, domain_path: str) -> DomainInfo: ...
 
     def inspect_problem(
         self, domain_path: str, problem_path: str
-    ) -> ProblemInfo:
-        ...
+    ) -> ProblemInfo: ...
 
     def check_applicable(
         self,
@@ -95,7 +107,7 @@ class PDDLBackend(Protocol):
         state_preds: Optional[list[str]],
         action_str: str,
     ) -> ApplicabilityResult:
-        """Check action applicability. state_preds=None means initial state."""
+        """state_preds=None means initial state."""
         ...
 
     def get_applicable_actions(
@@ -105,11 +117,5 @@ class PDDLBackend(Protocol):
         state_preds: Optional[list[str]],
         max_results: int,
     ) -> ApplicableActionsResult:
-        """Enumerate applicable actions. state_preds=None means initial state."""
-        ...
-
-    def state_to_predicate_list(
-        self, state: Any, domain_path: str, problem_path: str
-    ) -> list[str]:
-        """Convert a backend-specific state to sorted s-expression predicate list."""
+        """state_preds=None means initial state."""
         ...

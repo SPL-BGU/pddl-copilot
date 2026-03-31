@@ -106,9 +106,7 @@ def _clean_plan_lines(plan_path: str) -> List[str]:
     return actions
 
 
-def _compact_pddl(s: str) -> str:
-    """Collapse internal whitespace in a PDDL expression to single spaces."""
-    return re.sub(r"\s+", " ", s).strip()
+from backends import compact_pddl as _compact_pddl
 
 
 def _resolve_state_preds(state_input: str) -> Optional[list[str]]:
@@ -128,6 +126,99 @@ def _format_state(preds: list[str], is_init: bool = False) -> str:
     """Format a predicate list as a PDDL state string."""
     tag = ":init" if is_init else ":state"
     return f"({tag} {' '.join(preds)})"
+
+
+def _extract_pddl_section(content: str, keyword: str) -> Optional[str]:
+    """Extract the body of a PDDL section like (:init ...) using balanced parens."""
+    idx = content.find(f"({keyword}")
+    if idx == -1:
+        return None
+    # Find the matching closing paren
+    depth = 0
+    start = idx
+    for i in range(idx, len(content)):
+        if content[i] == '(':
+            depth += 1
+        elif content[i] == ')':
+            depth -= 1
+            if depth == 0:
+                # Return everything between (keyword ... and the closing )
+                inner = content[start:i + 1]
+                # Strip the outer (:keyword ...) wrapper
+                m = re.match(r"\(" + re.escape(keyword) + r"\s+(.*)\)$", inner, re.DOTALL)
+                return m.group(1) if m else inner
+    return None
+
+
+def _lightweight_parse_problem(content: str) -> dict:
+    """Extract structured data from a PDDL problem string without a parser.
+
+    Works without a domain — extracts name, domain reference, objects (with
+    types if present), init predicates, and goal predicates using regex.
+    Cannot validate predicates or provide action info.
+    """
+    result = {}
+
+    # Problem name
+    m = re.search(r"\(problem\s+([^\s)]+)", content)
+    result["name"] = m.group(1) if m else None
+
+    # Domain reference
+    m = re.search(r"\(:domain\s+([^\s)]+)", content)
+    result["domain_name"] = m.group(1) if m else None
+
+    # Objects — find the (:objects ...) block
+    objects = []
+    m = re.search(r"\(:objects\s+(.*?)\)", content, re.DOTALL)
+    if m:
+        obj_text = m.group(1).strip()
+        # Parse typed object lists: "a b - block c - table" or untyped "a b c"
+        # Split on " - " to get groups
+        segments = re.split(r"\s+-\s+", obj_text)
+        if len(segments) > 1:
+            # Typed: each segment except last has object names, following segment starts with type name
+            for i in range(len(segments) - 1):
+                names = segments[i].split()
+                # The type is the first token of the next segment
+                next_tokens = segments[i + 1].split()
+                type_name = next_tokens[0]
+                for name in names:
+                    name = name.strip()
+                    if name:
+                        objects.append({"name": name, "type": type_name})
+                # Remaining tokens after type in the next segment are objects for the segment after that
+                if i < len(segments) - 2:
+                    segments[i + 1] = " ".join(next_tokens[1:])
+        else:
+            # Untyped
+            for name in obj_text.split():
+                name = name.strip()
+                if name:
+                    objects.append({"name": name, "type": "object"})
+    result["objects"] = objects
+
+    # Init predicates — extract individual (pred ...) from (:init ...)
+    init_preds = []
+    init_body = _extract_pddl_section(content, ":init")
+    if init_body:
+        init_preds = re.findall(r"\([^()]+\)", init_body)
+        init_preds = [_compact_pddl(p) for p in init_preds]
+    result["init"] = sorted(init_preds)
+
+    # Goal predicates — extract from (:goal ...)
+    goal_preds = []
+    goal_body = _extract_pddl_section(content, ":goal")
+    if goal_body:
+        # Unwrap outer (and ...) if present
+        goal_stripped = goal_body.strip()
+        and_match = re.match(r"^\(and\s+(.*)\)$", goal_stripped, re.DOTALL)
+        if and_match:
+            goal_stripped = and_match.group(1)
+        goal_preds = re.findall(r"\([^()]+\)", goal_stripped)
+        goal_preds = [_compact_pddl(p) for p in goal_preds]
+    result["goal"] = sorted(goal_preds)
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -224,12 +315,18 @@ def get_trajectory(
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def inspect_domain(
     domain: Annotated[str, Field(description="PDDL domain content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
+    problem: Annotated[Optional[str], Field(description="Optional PDDL problem content string or absolute file path. When provided, adds grounded details: objects, initial state, and goal.")] = None,
     parser: Annotated[Optional[str], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
 ) -> dict:
-    """Returns structured information about a PDDL domain: name, requirements, types, predicates, and actions with their parameters, preconditions, and effects.
+    """Returns structured information about a PDDL domain: name, requirements, types, predicates, and actions.
+
+    When a problem is also provided, adds grounded details: objects with types,
+    initial state predicates, and goal conditions — giving a complete picture of
+    the domain-scenario.
 
     Returns:
-        Success: {"name": str, "requirements": [...], "types": {...}, "predicates": [...], "actions": [...], "parser_used": str}
+        Domain only: {"name": str, "requirements": [...], "types": {...}, "predicates": [...], "actions": [...], "parser_used": str}
+        Domain + problem: above + {"objects": [...], "init": [...], "goal": [...], "num_objects": int, "num_init_facts": int, "num_goal_conditions": int}
         Error: {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
@@ -242,7 +339,7 @@ def inspect_domain(
                 "inspect_domain", parser, domain_path
             )
 
-            return {
+            out = {
                 "name": result.name,
                 "requirements": result.requirements,
                 "types": result.types,
@@ -250,6 +347,24 @@ def inspect_domain(
                 "actions": result.actions,
                 "parser_used": parser_used,
             }
+
+            # If a problem is provided, add grounded details
+            if problem is not None:
+                try:
+                    problem_path = _ensure_file(problem, "problem.pddl", rd)
+                    prob_result, _ = _run_with_fallback(
+                        "inspect_problem", parser, domain_path, problem_path
+                    )
+                    out["objects"] = prob_result.objects
+                    out["init"] = prob_result.init
+                    out["goal"] = prob_result.goal
+                    out["num_objects"] = len(prob_result.objects)
+                    out["num_init_facts"] = len(prob_result.init)
+                    out["num_goal_conditions"] = len(prob_result.goal)
+                except Exception as e:
+                    out["problem_warning"] = f"Could not parse problem: {e}"
+
+            return out
 
         except Exception as e:
             return {"error": True, "message": f"{type(e).__name__}: {e}"}
@@ -360,15 +475,24 @@ def diff_states(
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def normalize_pddl(
     content: Annotated[str, Field(description="PDDL domain or problem content string.")],
-    output_format: Annotated[str, Field(description="Output format: 'pddl' for normalized PDDL text, 'json' for structured inspection.")] = "pddl",
+    domain: Annotated[Optional[str], Field(description="PDDL domain content string or file path. Required for full problem parsing; without it, problem parsing is partial (no action details).")] = None,
+    output_format: Annotated[str, Field(description="Output format: 'pddl' for normalized PDDL text (domain only), 'json' for structured JSON.")] = "json",
 ) -> dict:
-    """Parses PDDL content and re-serializes it in normalized form. Serves as a lightweight syntax check (Tier 1, no Docker/VAL required).
+    """Parses PDDL content into a unified structured JSON representation.
 
-    Uses pddl-plus-parser exclusively (DomainExporter is parser-specific).
+    Accepts domain or problem content. Bridges both parser backends into a
+    common JSON form.
+
+    - **Domain content**: returns full domain structure (types, predicates, actions).
+    - **Problem content + domain**: returns full problem structure via backend
+      (objects, init, goal) with validation.
+    - **Problem content, no domain**: lightweight regex parse — extracts objects,
+      init predicates, goal predicates, and type info where available. Cannot
+      validate predicates or provide action details.
 
     Returns:
-        Success: {"valid": True, "type": "domain"|"problem", "normalized": str|dict, "warnings": [...]}
-        Error (parse failure): {"valid": False, "type": "unknown", "normalized": None, "warnings": [...]}"""
+        Success: {"valid": True, "type": "domain"|"problem", "normalized": dict|str, "warnings": [...]}
+        Error: {"valid": False, "type": str, "normalized": None, "warnings": [...]}"""
     with _request_dir() as rd:
         content_stripped = content.strip()
 
@@ -387,21 +511,12 @@ def normalize_pddl(
 
         try:
             if pddl_type == "domain":
-                # normalize_pddl stays pddl-plus-parser specific
-                from pddl_plus_parser.exporters import DomainExporter
-                from pddl_plus_parser.lisp_parsers import DomainParser
+                if output_format == "pddl":
+                    from pddl_plus_parser.exporters import DomainExporter
+                    from pddl_plus_parser.lisp_parsers import DomainParser
 
-                domain_path = _ensure_file(content, "domain.pddl", rd)
-                parsed_domain = DomainParser(Path(domain_path)).parse_domain()
-
-                if output_format == "json":
-                    return {
-                        "valid": True,
-                        "type": "domain",
-                        "normalized": inspect_domain(content),
-                        "warnings": [],
-                    }
-                else:
+                    domain_path = _ensure_file(content, "domain.pddl", rd)
+                    parsed_domain = DomainParser(Path(domain_path)).parse_domain()
                     normalized = DomainExporter().extract_domain(parsed_domain)
                     return {
                         "valid": True,
@@ -409,16 +524,63 @@ def normalize_pddl(
                         "normalized": normalized,
                         "warnings": [],
                     }
+                else:
+                    domain_path = _ensure_file(content, "domain.pddl", rd)
+                    result, parser_used = _run_with_fallback(
+                        "inspect_domain", None, domain_path
+                    )
+                    normalized = {
+                        "name": result.name,
+                        "requirements": result.requirements,
+                        "types": result.types,
+                        "predicates": result.predicates,
+                        "actions": result.actions,
+                        "parser_used": parser_used,
+                    }
+                    return {
+                        "valid": True,
+                        "type": "domain",
+                        "normalized": normalized,
+                        "warnings": [],
+                    }
+
             else:
+                # Problem content
+                warnings = []
+                if domain is not None:
+                    # Full parse with backend
+                    domain_path = _ensure_file(domain, "domain.pddl", rd)
+                    problem_path = _ensure_file(content, "problem.pddl", rd)
+                    prob_result, parser_used = _run_with_fallback(
+                        "inspect_problem", None, domain_path, problem_path
+                    )
+                    normalized = {
+                        "name": prob_result.name,
+                        "domain_name": prob_result.domain_name,
+                        "objects": prob_result.objects,
+                        "init": prob_result.init,
+                        "goal": prob_result.goal,
+                        "num_objects": len(prob_result.objects),
+                        "num_init_facts": len(prob_result.init),
+                        "num_goal_conditions": len(prob_result.goal),
+                        "parser_used": parser_used,
+                    }
+                else:
+                    # Lightweight parse without domain — extract what we can
+                    normalized = _lightweight_parse_problem(content)
+                    normalized["num_objects"] = len(normalized["objects"])
+                    normalized["num_init_facts"] = len(normalized["init"])
+                    normalized["num_goal_conditions"] = len(normalized["goal"])
+                    warnings.append(
+                        "Parsed without domain — objects, init, and goal extracted "
+                        "but predicates are not validated. Action details unavailable."
+                    )
+
                 return {
-                    "valid": False,
+                    "valid": True,
                     "type": "problem",
-                    "normalized": None,
-                    "warnings": [
-                        "Problem normalization requires a domain. "
-                        "Use inspect_problem(domain, problem) for full problem analysis, "
-                        "or pass domain content to normalize_pddl for domain normalization."
-                    ],
+                    "normalized": normalized,
+                    "warnings": warnings,
                 }
 
         except Exception as e:
