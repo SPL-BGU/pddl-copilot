@@ -150,13 +150,19 @@ assert "(clear a)" in result["removed"], f"expected '(clear a)' in removed: {res
 assert "(clear b)" in result["unchanged"], f"expected '(clear b)' in unchanged: {result['unchanged']}"
 print("OK")
 
-# Test 9: normalize_pddl
+# Test 9: normalize_pddl (default output is json)
 print("TEST:NORMALIZE_PDDL:", end="")
 result = normalize_pddl(DOMAIN)
 assert result["valid"] is True, f"expected valid=True, got {result}"
 assert result["type"] == "domain", f"expected type='domain', got {result['type']}"
 assert result["normalized"] is not None, f"expected normalized content"
-assert "(define" in result["normalized"], f"expected PDDL content in normalized"
+assert isinstance(result["normalized"], dict), f"expected dict for json output, got {type(result['normalized'])}"
+assert "name" in result["normalized"], f"expected 'name' in normalized json"
+# Also test pddl output format
+result_pddl = normalize_pddl(DOMAIN, output_format="pddl")
+assert result_pddl["valid"] is True
+assert "(define" in result_pddl["normalized"], f"expected PDDL content in pddl format"
+assert "object - object" not in result_pddl["normalized"], f"implicit 'object' type should not appear in PDDL output: {result_pddl['normalized']}"
 print("OK")
 
 # Test 10: normalize_pddl with invalid content
@@ -185,7 +191,43 @@ assert "error" not in result, f"check_applicable with state list error: {result}
 assert result["applicable"] is True, f"expected applicable=True for stack a b after picking up a"
 print("OK")
 
-# Test 13: parser_used field present in responses
+# Test 13: normalize_pddl with problem (no domain — lightweight parse)
+print("TEST:NORMALIZE_PROBLEM_NODOMAIN:", end="")
+result = normalize_pddl(PROBLEM)
+assert result["valid"] is True, f"expected valid=True, got {result}"
+assert result["type"] == "problem", f"expected type='problem', got {result['type']}"
+n = result["normalized"]
+assert n["name"] == "bw1", f"expected name='bw1', got {n['name']}"
+assert n["num_objects"] == 2, f"expected 2 objects, got {n['num_objects']}"
+assert n["num_init_facts"] == 5, f"expected 5 init, got {n['num_init_facts']}"
+assert n["num_goal_conditions"] == 1, f"expected 1 goal, got {n['num_goal_conditions']}"
+assert len(result["warnings"]) > 0, f"expected warning about missing domain"
+print("OK")
+
+# Test 14: normalize_pddl with problem + domain (full parse)
+print("TEST:NORMALIZE_PROBLEM_DOMAIN:", end="")
+result = normalize_pddl(PROBLEM, domain=DOMAIN)
+assert result["valid"] is True, f"expected valid=True, got {result}"
+assert result["type"] == "problem"
+n = result["normalized"]
+assert n["num_objects"] == 2
+assert n["num_init_facts"] == 5
+assert n["num_goal_conditions"] == 1
+assert "parser_used" in n, f"expected parser_used in full parse"
+print("OK")
+
+# Test 15: inspect_domain with problem (grounded details)
+print("TEST:INSPECT_DOMAIN_GROUNDED:", end="")
+result = inspect_domain(DOMAIN, problem=PROBLEM)
+assert "error" not in result, f"inspect_domain with problem error: {result}"
+assert "objects" in result, f"expected 'objects' when problem provided"
+assert len(result["objects"]) == 2, f"expected 2 objects, got {len(result['objects'])}"
+assert "init" in result, f"expected 'init' when problem provided"
+assert "goal" in result, f"expected 'goal' when problem provided"
+assert len(result["actions"]) > 0, f"expected actions from domain"
+print("OK")
+
+# Test 16: parser_used field present
 print("TEST:PARSER_USED:", end="")
 result = get_trajectory(DOMAIN, PROBLEM, PLAN)
 assert "parser_used" in result, f"missing 'parser_used' key: {result}"
@@ -200,13 +242,13 @@ result5 = get_applicable_actions(DOMAIN, PROBLEM, "initial")
 assert "parser_used" in result5, f"missing 'parser_used' in get_applicable_actions"
 print("OK")
 
-# Test 14: Invalid parser name returns error
+# Test 17: Invalid parser name returns error
 print("TEST:INVALID_PARSER:", end="")
 result = get_trajectory(DOMAIN, PROBLEM, PLAN, parser="nonexistent")
 assert "error" in result, f"expected error for invalid parser, got {result}"
 print("OK")
 
-# Test 15-19: UP backend (skip if not installed)
+# Test 18+: UP backend (skip if not installed)
 try:
     from backend_up import UnifiedPlanningBackend
     UP_AVAILABLE = True
@@ -251,8 +293,90 @@ if UP_AVAILABLE:
     assert "(pick-up b)" in action_set, f"expected '(pick-up b)': {action_set}"
     assert result["parser_used"] == "unified-planning"
     print("OK")
+
+    # -- New UP parity & coverage tests --
+
+    print("TEST:UP_INSPECT_DOMAIN:", end="")
+    result = inspect_domain(DOMAIN, parser="unified-planning")
+    assert "error" not in result, f"UP inspect_domain error: {result}"
+    assert result["name"] == "bw", f"expected name 'bw', got {result['name']}"
+    assert len(result["actions"]) == 4, f"expected 4 actions, got {len(result['actions'])}"
+    assert len(result["predicates"]) == 5, f"expected 5 predicates, got {len(result['predicates'])}"
+    assert "block" in result["types"], f"'block' not in types: {result['types']}"
+    assert ":strips" in result["requirements"], f"expected :strips in requirements: {result['requirements']}"
+    print("OK")
+
+    print("TEST:UP_STATE_RECONSTRUCTION:", end="")
+    state_preds = json.dumps(["(holding a)", "(clear b)", "(ontable b)"])
+    result = check_applicable(DOMAIN, PROBLEM, state_preds, "(stack a b)", parser="unified-planning")
+    assert "error" not in result, f"UP state reconstruction error: {result}"
+    assert result["applicable"] is True, f"expected applicable for stack a b with custom state"
+    assert result["parser_used"] == "unified-planning"
+    print("OK")
+
+    print("TEST:UP_PARAM_COUNT_ERROR:", end="")
+    result = check_applicable(DOMAIN, PROBLEM, "initial", "(pick-up a b)", parser="unified-planning")
+    assert "error" in result, f"expected error for wrong param count: {result}"
+    assert "expects" in result["message"] or "parameter" in result["message"].lower(), f"unexpected error: {result['message']}"
+    print("OK")
+
+    print("TEST:UP_TYPE_HIERARCHY:", end="")
+    DOMAIN_TYPED = """(define (domain typed)
+      (:requirements :typing)
+      (:types thing - object block - thing)
+      (:predicates (on ?x - thing ?y - thing) (clear ?x - block))
+      (:action move :parameters (?x - block ?y - block)
+        :precondition (and (clear ?x) (clear ?y))
+        :effect (and (on ?x ?y) (not (clear ?y)))))"""
+    PROBLEM_TYPED = """(define (problem typed1) (:domain typed)
+      (:objects a b - block)
+      (:init (clear a) (clear b))
+      (:goal (on a b)))"""
+    result = inspect_domain(DOMAIN_TYPED, parser="unified-planning")
+    assert "error" not in result, f"UP typed domain error: {result}"
+    assert "block" in result["types"], f"'block' not in types: {result['types']}"
+    assert "thing" in result["types"], f"'thing' not in types: {result['types']}"
+    result2 = get_applicable_actions(DOMAIN_TYPED, PROBLEM_TYPED, "initial", parser="unified-planning")
+    assert "error" not in result2, f"UP typed applicable error: {result2}"
+    assert result2["count"] > 0, f"expected applicable actions, got 0"
+    print("OK")
+
+    # Parity tests — both backends must produce identical results
+    print("TEST:UP_PARITY_CHECK:", end="")
+    pp_domain = inspect_domain(DOMAIN, parser="pddl-plus-parser")
+    up_domain = inspect_domain(DOMAIN, parser="unified-planning")
+    assert pp_domain["name"] == up_domain["name"], f"name mismatch: {pp_domain['name']} vs {up_domain['name']}"
+    assert len(pp_domain["actions"]) == len(up_domain["actions"]), f"action count mismatch"
+    assert len(pp_domain["predicates"]) == len(up_domain["predicates"]), f"predicate count mismatch"
+    pp_action_names = {a["name"] for a in pp_domain["actions"]}
+    up_action_names = {a["name"] for a in up_domain["actions"]}
+    assert pp_action_names == up_action_names, f"action names differ: {pp_action_names} vs {up_action_names}"
+    pp_pred_names = {p["name"] for p in pp_domain["predicates"]}
+    up_pred_names = {p["name"] for p in up_domain["predicates"]}
+    assert pp_pred_names == up_pred_names, f"predicate names differ: {pp_pred_names} vs {up_pred_names}"
+    pp_prob = inspect_problem(DOMAIN, PROBLEM, parser="pddl-plus-parser")
+    up_prob = inspect_problem(DOMAIN, PROBLEM, parser="unified-planning")
+    assert pp_prob["num_objects"] == up_prob["num_objects"], f"object count: {pp_prob['num_objects']} vs {up_prob['num_objects']}"
+    assert pp_prob["init"] == up_prob["init"], f"init mismatch: {pp_prob['init']} vs {up_prob['init']}"
+    assert pp_prob["goal"] == up_prob["goal"], f"goal mismatch: {pp_prob['goal']} vs {up_prob['goal']}"
+    print("OK")
+
+    print("TEST:NORMALIZE_PARITY:", end="")
+    pp_norm = normalize_pddl(DOMAIN, output_format="json")
+    # Force UP backend
+    up_norm_result = inspect_domain(DOMAIN, parser="unified-planning")
+    pp_norm_result = inspect_domain(DOMAIN, parser="pddl-plus-parser")
+    # Compare structural equality
+    assert pp_norm_result["name"] == up_norm_result["name"]
+    pp_types = set(pp_norm_result["types"].keys())
+    up_types = set(up_norm_result["types"].keys())
+    assert pp_types == up_types, f"types mismatch: {pp_types} vs {up_types}"
+    print("OK")
+
 else:
-    for name in ["UP_TRAJECTORY", "UP_INSPECT_PROBLEM", "UP_CHECK_APPLICABLE", "UP_CHECK_INAPPLICABLE", "UP_APPLICABLE_ACTIONS"]:
+    for name in ["UP_TRAJECTORY", "UP_INSPECT_PROBLEM", "UP_CHECK_APPLICABLE", "UP_CHECK_INAPPLICABLE", "UP_APPLICABLE_ACTIONS",
+                  "UP_INSPECT_DOMAIN", "UP_STATE_RECONSTRUCTION", "UP_PARAM_COUNT_ERROR", "UP_TYPE_HIERARCHY",
+                  "UP_PARITY_CHECK", "NORMALIZE_PARITY"]:
         print(f"TEST:{name}:SKIP")
 
 print("TEST:DONE")
@@ -265,8 +389,11 @@ RESULT=$($PYTHON -c "$TEST_SCRIPT" "$PLUGIN_ROOT" 2>"$ERRLOG")
 for TEST_NAME in IMPORT TRAJECTORY ERROR_HANDLING INSPECT_DOMAIN INSPECT_PROBLEM \
     CHECK_APPLICABLE_YES CHECK_APPLICABLE_NO DIFF_STATES NORMALIZE_PDDL \
     NORMALIZE_PDDL_INVALID GET_APPLICABLE_ACTIONS CHECK_APPLICABLE_STATE_LIST \
+    NORMALIZE_PROBLEM_NODOMAIN NORMALIZE_PROBLEM_DOMAIN INSPECT_DOMAIN_GROUNDED \
     PARSER_USED INVALID_PARSER \
-    UP_TRAJECTORY UP_INSPECT_PROBLEM UP_CHECK_APPLICABLE UP_CHECK_INAPPLICABLE UP_APPLICABLE_ACTIONS; do
+    UP_TRAJECTORY UP_INSPECT_PROBLEM UP_CHECK_APPLICABLE UP_CHECK_INAPPLICABLE UP_APPLICABLE_ACTIONS \
+    UP_INSPECT_DOMAIN UP_STATE_RECONSTRUCTION UP_PARAM_COUNT_ERROR UP_TYPE_HIERARCHY \
+    UP_PARITY_CHECK NORMALIZE_PARITY; do
 
     LABEL=$(echo "$TEST_NAME" | tr '_' ' ' | tr '[:upper:]' '[:lower:]')
     printf "%-40s" "$LABEL..."

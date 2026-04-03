@@ -5,10 +5,9 @@ Extracted from parser_server.py. All predicate strings use s-expression format.
 """
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 import itertools
-import json
-import re
+import sys
 
 from pddl_plus_parser.exporters import TrajectoryExporter
 from pddl_plus_parser.lisp_parsers import DomainParser, ProblemParser
@@ -17,20 +16,16 @@ from pddl_plus_parser.models.pddl_predicate import GroundedPredicate
 from pddl_plus_parser.models.pddl_state import State
 
 from backends import (
+    MAX_GROUNDING_ATTEMPTS,
     ApplicabilityResult,
     ApplicableActionsResult,
     DomainInfo,
     ProblemInfo,
     TrajectoryResult,
     TrajectoryStep,
+    compact_pddl,
+    parse_action_call,
 )
-
-MAX_GROUNDING_ATTEMPTS = 10_000
-
-
-def _compact_pddl(s: str) -> str:
-    """Collapse internal whitespace in a PDDL expression to single spaces."""
-    return re.sub(r"\s+", " ", s).strip()
 
 
 class PddlPlusBackend:
@@ -61,7 +56,7 @@ class PddlPlusBackend:
         preds = []
         for grounded_set in state.state_predicates.values():
             for gp in grounded_set:
-                preds.append(gp.untyped_representation)
+                preds.append(compact_pddl(gp.untyped_representation))
         return sorted(preds)
 
     def _resolve_state(
@@ -111,39 +106,24 @@ class PddlPlusBackend:
 
     @staticmethod
     def _get_objects_by_type(parsed_domain, parsed_problem) -> dict:
-        objects_by_type = {}
+        objects_by_type: dict[str, set] = {}
         all_objects = {**parsed_domain.constants, **parsed_problem.objects}
         for obj_name, obj in all_objects.items():
             current_type = obj.type
             while current_type is not None:
                 type_name = current_type.name
                 if type_name not in objects_by_type:
-                    objects_by_type[type_name] = []
-                if obj_name not in objects_by_type[type_name]:
-                    objects_by_type[type_name].append(obj_name)
+                    objects_by_type[type_name] = set()
+                objects_by_type[type_name].add(obj_name)
                 current_type = getattr(current_type, "parent", None)
-        return objects_by_type
-
-    @staticmethod
-    def _parse_action_call(action_str: str) -> tuple:
-        s = action_str.strip()
-        if s.startswith("(") and s.endswith(")"):
-            s = s[1:-1]
-        parts = s.split()
-        return parts[0], parts[1:]
+        return {k: list(v) for k, v in objects_by_type.items()}
 
     # -- Protocol methods --------------------------------------------------
-
-    def parse_domain_and_problem(self, domain_path: str, problem_path: str) -> Any:
-        return self._parse(domain_path, problem_path)
 
     def get_trajectory(
         self, domain_path: str, problem_path: str, actions: list[str]
     ) -> TrajectoryResult:
-        parsed_domain = DomainParser(Path(domain_path)).parse_domain()
-        parsed_problem = ProblemParser(
-            problem_path=Path(problem_path), domain=parsed_domain
-        ).parse_problem()
+        parsed_domain, parsed_problem = self._parse(domain_path, problem_path)
 
         exporter = TrajectoryExporter(domain=parsed_domain)
         triplets = exporter.parse_plan(parsed_problem, action_sequence=actions)
@@ -183,8 +163,8 @@ class PddlPlusBackend:
             actions_info.append({
                 "name": action.name,
                 "parameters": {k: v.name for k, v in action.signature.items()},
-                "precondition": _compact_pddl(str(action.preconditions)),
-                "effect": _compact_pddl(action.effects_to_pddl()),
+                "precondition": compact_pddl(str(action.preconditions)),
+                "effect": compact_pddl(action.effects_to_pddl()),
             })
 
         return DomainInfo(
@@ -210,7 +190,7 @@ class PddlPlusBackend:
 
         goal_preds = []
         for gp in parsed_problem.goal_state_predicates:
-            goal_preds.append(gp.untyped_representation)
+            goal_preds.append(compact_pddl(gp.untyped_representation))
         goal_preds.sort()
 
         return ProblemInfo(
@@ -230,7 +210,7 @@ class PddlPlusBackend:
     ) -> ApplicabilityResult:
         parsed_domain, parsed_problem = self._parse(domain_path, problem_path)
         resolved_state = self._resolve_state(state_preds, parsed_domain, parsed_problem)
-        action_name, action_objects = self._parse_action_call(action_str)
+        action_name, action_objects = parse_action_call(action_str)
 
         if action_name not in parsed_domain.actions:
             raise ValueError(f"Unknown action: '{action_name}'")
@@ -259,7 +239,7 @@ class PddlPlusBackend:
         state_serialized = resolved_state.serialize()
         for binary_op, condition in operator.grounded_preconditions:
             if isinstance(condition, GroundedPredicate):
-                pred_repr = condition.untyped_representation
+                pred_repr = compact_pddl(condition.untyped_representation)
                 positive_copy = condition.copy()
                 positive_copy.is_positive = True
                 positive_repr = positive_copy.untyped_representation
@@ -280,11 +260,11 @@ class PddlPlusBackend:
         for effect in operator.grounded_effects:
             for gp in effect.grounded_discrete_effects:
                 if gp.is_positive:
-                    would_add.append(gp.untyped_representation)
+                    would_add.append(compact_pddl(gp.untyped_representation))
                 else:
                     pos = gp.copy()
                     pos.is_positive = True
-                    would_delete.append(pos.untyped_representation)
+                    would_delete.append(compact_pddl(pos.untyped_representation))
 
         return ApplicabilityResult(
             applicable=applicable,
@@ -358,7 +338,8 @@ class PddlPlusBackend:
                         if len(applicable) >= max_results:
                             truncated = True
                             break
-                except Exception:
+                except (AttributeError, ValueError, TypeError, KeyError) as e:
+                    print(f"Warning: grounding {action.name} with {obj_list} failed: {e}", file=sys.stderr)
                     continue
 
             if grounding_cap_hit or truncated:
@@ -374,9 +355,3 @@ class PddlPlusBackend:
             warning=warning,
         )
 
-    def state_to_predicate_list(
-        self, state: Any, domain_path: str, problem_path: str
-    ) -> list[str]:
-        if isinstance(state, State):
-            return self._state_to_preds(state)
-        raise TypeError(f"Expected pddl-plus-parser State, got {type(state)}")

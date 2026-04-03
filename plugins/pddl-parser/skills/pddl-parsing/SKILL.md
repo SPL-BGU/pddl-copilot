@@ -22,23 +22,24 @@ allowed-tools: mcp__pddl-parser__get_trajectory, mcp__pddl-parser__inspect_domai
 ## Parser Backends
 
 Tools that accept a `parser` parameter can use either backend:
-- **pddl-plus-parser** (default, always available): Full STRIPS/numeric support
-- **unified-planning** (optional): Alternative parser with different PDDL coverage
+- **pddl-plus-parser** (default): Full STRIPS/numeric support
+- **unified-planning**: Full STRIPS, typing, conditional effects, and ADL features
 
-When `parser` is null (default), the server tries pddl-plus-parser first, then falls back to unified-planning if available. Responses include a `parser_used` field indicating which backend produced the result.
+Both backends are bundled and always available. They produce identical canonical output for the same input. When `parser` is null (default), the server uses pddl-plus-parser. Responses include a `parser_used` field indicating which backend produced the result.
 
 ## Tools
 
-### `inspect_domain(domain, parser?)` -> structured JSON
+### `inspect_domain(domain, problem?, parser?)` -> structured JSON
 
-Returns the domain's name, requirements, type hierarchy, predicates with parameter signatures, and actions with parameters, preconditions, and effects.
+Returns the domain's name, requirements, type hierarchy, predicates, and actions. When a problem is also provided, adds grounded details: objects, initial state, and goal — giving a complete picture of the domain-scenario.
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `domain`  | Yes | PDDL domain content string or absolute file path |
+| `problem` | No | PDDL problem content string or file path. Adds grounded details (objects, init, goal) |
 | `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
 
-**Returns:**
+**Returns (domain only):**
 ```json
 {
   "name": "blocksworld",
@@ -46,6 +47,16 @@ Returns the domain's name, requirements, type hierarchy, predicates with paramet
   "types": {"block": "object"},
   "predicates": [{"name": "on", "parameters": {"?x": "block", "?y": "block"}}],
   "actions": [{"name": "pick-up", "parameters": {"?x": "block"}, "precondition": "(and ...)", "effect": "(and ...)"}]
+}
+```
+
+**Returns (domain + problem) — adds:**
+```json
+{
+  "objects": [{"name": "a", "type": "block"}],
+  "init": ["(clear a)", "(ontable a)", "(handempty)"],
+  "goal": ["(on a b)"],
+  "num_objects": 2, "num_init_facts": 5, "num_goal_conditions": 1
 }
 ```
 
@@ -64,7 +75,7 @@ Returns the problem's name, objects with types, initial state predicates, goal c
 {
   "name": "bw1", "domain_name": "blocksworld",
   "objects": [{"name": "a", "type": "block"}],
-  "init": ["(clear a)", "(handempty )", "(ontable a)"],
+  "init": ["(clear a)", "(handempty)", "(ontable a)"],
   "goal": ["(on a b)"],
   "num_objects": 2, "num_init_facts": 5, "num_goal_conditions": 1
 }
@@ -86,10 +97,10 @@ Checks whether a grounded action is applicable in a given state. Reports which p
 ```json
 {
   "applicable": true,
-  "satisfied_preconditions": ["(clear a)", "(handempty )", "(ontable a)"],
+  "satisfied_preconditions": ["(clear a)", "(handempty)", "(ontable a)"],
   "unsatisfied_preconditions": [],
   "would_add": ["(holding a)"],
-  "would_delete": ["(clear a)", "(handempty )", "(ontable a)"]
+  "would_delete": ["(clear a)", "(handempty)", "(ontable a)"]
 }
 ```
 
@@ -134,18 +145,33 @@ Computes the difference between two states: added, removed, and unchanged predic
 }
 ```
 
-### `normalize_pddl(content, output_format)` -> normalized PDDL
+### `normalize_pddl(content, domain?, output_format?)` -> unified JSON
 
-Parses PDDL domain content and re-serializes in normalized form. Lightweight Tier-1 syntax check (no Docker/VAL).
+Parses PDDL content (domain or problem) into a unified structured JSON representation. Bridges both parser backends into a common form.
+
+- **Domain content**: full domain structure (types, predicates, actions)
+- **Problem content + domain**: full validated problem structure (objects, init, goal)
+- **Problem content, no domain**: lightweight parse — extracts objects, init, goal without validation
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `content` | Yes | PDDL domain content string |
-| `output_format` | No | `"pddl"` (default) for normalized text, `"json"` for structured inspection |
+| `content` | Yes | PDDL domain or problem content string |
+| `domain`  | No | Domain content/path. Required for full problem parsing; without it, problem parsing is partial |
+| `output_format` | No | `"json"` (default) for structured JSON, `"pddl"` for normalized PDDL text (domain only) |
 
-**Returns:**
+**Returns (domain):**
 ```json
-{"valid": true, "type": "domain", "normalized": "(define (domain ...) ...)", "warnings": []}
+{"valid": true, "type": "domain", "normalized": {"name": "bw", "types": {...}, ...}, "warnings": []}
+```
+
+**Returns (problem + domain):**
+```json
+{"valid": true, "type": "problem", "normalized": {"name": "bw1", "objects": [...], "init": [...], "goal": [...], "parser_used": "..."}, "warnings": []}
+```
+
+**Returns (problem, no domain):**
+```json
+{"valid": true, "type": "problem", "normalized": {"name": "bw1", "objects": [...], "init": [...], "goal": [...]}, "warnings": ["Parsed without domain..."]}
 ```
 
 ### `get_applicable_actions(domain, problem, state, max_results, parser?)` -> action list
