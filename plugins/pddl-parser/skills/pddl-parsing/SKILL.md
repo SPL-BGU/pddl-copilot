@@ -23,9 +23,9 @@ allowed-tools: mcp__pddl-parser__get_trajectory, mcp__pddl-parser__inspect_domai
 
 Tools that accept a `parser` parameter can use either backend:
 - **pddl-plus-parser** (default, always available): Full STRIPS/numeric support
-- **unified-planning** (optional): Alternative parser with different PDDL coverage
+- **unified-planning** (optional): Full feature parity with pddl-plus-parser, including STRIPS, typing, conditional effects, and ADL features
 
-When `parser` is null (default), the server tries pddl-plus-parser first, then falls back to unified-planning if available. Responses include a `parser_used` field indicating which backend produced the result.
+Both backends produce identical canonical output for the same input. When `parser` is null (default), the server tries pddl-plus-parser first, then falls back to unified-planning if available. Responses include a `parser_used` field indicating which backend produced the result.
 
 ## Tools
 
@@ -75,7 +75,7 @@ Returns the problem's name, objects with types, initial state predicates, goal c
 {
   "name": "bw1", "domain_name": "blocksworld",
   "objects": [{"name": "a", "type": "block"}],
-  "init": ["(clear a)", "(handempty )", "(ontable a)"],
+  "init": ["(clear a)", "(handempty)", "(ontable a)"],
   "goal": ["(on a b)"],
   "num_objects": 2, "num_init_facts": 5, "num_goal_conditions": 1
 }
@@ -97,10 +97,10 @@ Checks whether a grounded action is applicable in a given state. Reports which p
 ```json
 {
   "applicable": true,
-  "satisfied_preconditions": ["(clear a)", "(handempty )", "(ontable a)"],
+  "satisfied_preconditions": ["(clear a)", "(handempty)", "(ontable a)"],
   "unsatisfied_preconditions": [],
   "would_add": ["(holding a)"],
-  "would_delete": ["(clear a)", "(handempty )", "(ontable a)"]
+  "would_delete": ["(clear a)", "(handempty)", "(ontable a)"]
 }
 ```
 

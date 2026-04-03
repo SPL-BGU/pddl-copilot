@@ -55,7 +55,7 @@ class PddlPlusBackend:
         preds = []
         for grounded_set in state.state_predicates.values():
             for gp in grounded_set:
-                preds.append(gp.untyped_representation)
+                preds.append(compact_pddl(gp.untyped_representation))
         return sorted(preds)
 
     def _resolve_state(
@@ -190,7 +190,7 @@ class PddlPlusBackend:
 
         goal_preds = []
         for gp in parsed_problem.goal_state_predicates:
-            goal_preds.append(gp.untyped_representation)
+            goal_preds.append(compact_pddl(gp.untyped_representation))
         goal_preds.sort()
 
         return ProblemInfo(
@@ -239,7 +239,7 @@ class PddlPlusBackend:
         state_serialized = resolved_state.serialize()
         for binary_op, condition in operator.grounded_preconditions:
             if isinstance(condition, GroundedPredicate):
-                pred_repr = condition.untyped_representation
+                pred_repr = compact_pddl(condition.untyped_representation)
                 positive_copy = condition.copy()
                 positive_copy.is_positive = True
                 positive_repr = positive_copy.untyped_representation
@@ -260,11 +260,11 @@ class PddlPlusBackend:
         for effect in operator.grounded_effects:
             for gp in effect.grounded_discrete_effects:
                 if gp.is_positive:
-                    would_add.append(gp.untyped_representation)
+                    would_add.append(compact_pddl(gp.untyped_representation))
                 else:
                     pos = gp.copy()
                     pos.is_positive = True
-                    would_delete.append(pos.untyped_representation)
+                    would_delete.append(compact_pddl(pos.untyped_representation))
 
         return ApplicabilityResult(
             applicable=applicable,

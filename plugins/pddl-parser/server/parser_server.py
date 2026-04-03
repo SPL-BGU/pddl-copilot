@@ -106,7 +106,7 @@ def _clean_plan_lines(plan_path: str) -> List[str]:
     return actions
 
 
-from backends import compact_pddl as _compact_pddl
+from backends import compact_pddl as _compact_pddl, DomainInfo
 
 
 def _resolve_state_preds(state_input: str) -> Optional[list[str]]:
@@ -219,6 +219,50 @@ def _lightweight_parse_problem(content: str) -> dict:
     result["goal"] = sorted(goal_preds)
 
     return result
+
+
+def _domain_info_to_pddl(info: DomainInfo) -> str:
+    """Reconstruct canonical PDDL domain text from a DomainInfo result."""
+    lines = [f"(define (domain {info.name})"]
+
+    if info.requirements:
+        lines.append(f"  (:requirements {' '.join(info.requirements)})")
+
+    if info.types:
+        # Group types by parent
+        by_parent: dict = {}
+        for tname, parent in info.types.items():
+            key = parent or "object"
+            by_parent.setdefault(key, []).append(tname)
+        type_strs = []
+        for parent, children in by_parent.items():
+            type_strs.append(f"{' '.join(children)} - {parent}")
+        lines.append(f"  (:types {' '.join(type_strs)})")
+
+    if info.predicates:
+        pred_strs = []
+        for pred in info.predicates:
+            params = pred.get("parameters", {})
+            if params:
+                param_str = " ".join(f"{k} - {v}" for k, v in params.items())
+                pred_strs.append(f"({pred['name']} {param_str})")
+            else:
+                pred_strs.append(f"({pred['name']})")
+        lines.append(f"  (:predicates {' '.join(pred_strs)})")
+
+    for action in info.actions:
+        params = action.get("parameters", {})
+        if params:
+            param_str = " ".join(f"{k} - {v}" for k, v in params.items())
+        else:
+            param_str = ""
+        lines.append(f"  (:action {action['name']}")
+        lines.append(f"    :parameters ({param_str})")
+        lines.append(f"    :precondition {action.get('precondition', '()')}")
+        lines.append(f"    :effect {action.get('effect', '()')})")
+
+    lines.append(")")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -511,24 +555,13 @@ def normalize_pddl(
 
         try:
             if pddl_type == "domain":
+                domain_path = _ensure_file(content, "domain.pddl", rd)
+                result, parser_used = _run_with_fallback(
+                    "inspect_domain", None, domain_path
+                )
                 if output_format == "pddl":
-                    from pddl_plus_parser.exporters import DomainExporter
-                    from pddl_plus_parser.lisp_parsers import DomainParser
-
-                    domain_path = _ensure_file(content, "domain.pddl", rd)
-                    parsed_domain = DomainParser(Path(domain_path)).parse_domain()
-                    normalized = DomainExporter().extract_domain(parsed_domain)
-                    return {
-                        "valid": True,
-                        "type": "domain",
-                        "normalized": normalized,
-                        "warnings": [],
-                    }
+                    normalized = _domain_info_to_pddl(result)
                 else:
-                    domain_path = _ensure_file(content, "domain.pddl", rd)
-                    result, parser_used = _run_with_fallback(
-                        "inspect_domain", None, domain_path
-                    )
                     normalized = {
                         "name": result.name,
                         "requirements": result.requirements,
@@ -537,12 +570,12 @@ def normalize_pddl(
                         "actions": result.actions,
                         "parser_used": parser_used,
                     }
-                    return {
-                        "valid": True,
-                        "type": "domain",
-                        "normalized": normalized,
-                        "warnings": [],
-                    }
+                return {
+                    "valid": True,
+                    "type": "domain",
+                    "normalized": normalized,
+                    "warnings": [],
+                }
 
             else:
                 # Problem content

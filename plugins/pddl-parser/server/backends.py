@@ -28,7 +28,11 @@ def parse_action_call(action_str: str) -> tuple:
 
 def compact_pddl(s: str) -> str:
     """Collapse internal whitespace in a PDDL expression to single spaces."""
-    return re.sub(r"\s+", " ", s).strip()
+    s = re.sub(r"\s+", " ", s).strip()
+    # Remove spaces before ) and after ( for canonical form
+    s = re.sub(r"\s+\)", ")", s)
+    s = re.sub(r"\(\s+", "(", s)
+    return s
 
 
 # ---------------------------------------------------------------------------
