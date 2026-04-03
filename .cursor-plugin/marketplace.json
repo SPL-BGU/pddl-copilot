@@ -12,12 +12,12 @@
     {
       "name": "pddl-solver",
       "description": "Solve PDDL planning problems — supports classical and numeric (PDDL 2.1) domains. Runs in Docker.",
-      "source": "./plugins/pddl-solver",
       "author": {
         "name": "SPL-BGU"
       },
       "license": "MIT",
       "version": "1.1.1",
+      "source": "./plugins/pddl-solver",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
@@ -26,12 +26,12 @@
     {
       "name": "pddl-validator",
       "description": "Validate PDDL domains, problems, and plans — check syntax, verify plan correctness, and inspect state transitions. Runs in Docker.",
-      "source": "./plugins/pddl-validator",
       "author": {
         "name": "SPL-BGU"
       },
       "license": "MIT",
       "version": "1.1.1",
+      "source": "./plugins/pddl-validator",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
@@ -40,12 +40,12 @@
     {
       "name": "pddl-parser",
       "description": "PDDL introspection, trajectory generation, applicability checking, and state analysis. Pure Python, no Docker.",
-      "source": "./plugins/pddl-parser",
       "author": {
         "name": "SPL-BGU"
       },
       "license": "MIT",
       "version": "1.1.1",
+      "source": "./plugins/pddl-parser",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",

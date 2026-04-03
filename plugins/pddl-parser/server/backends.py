@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Optional, Protocol, runtime_checkable
+from typing import Any, Optional, Protocol
 
 # ---------------------------------------------------------------------------
 # Shared constants and utilities
@@ -90,7 +90,6 @@ class ApplicableActionsResult:
 # Backend Protocol
 # ---------------------------------------------------------------------------
 
-@runtime_checkable
 class PDDLBackend(Protocol):
     name: str
 

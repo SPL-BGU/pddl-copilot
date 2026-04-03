@@ -242,13 +242,13 @@ result5 = get_applicable_actions(DOMAIN, PROBLEM, "initial")
 assert "parser_used" in result5, f"missing 'parser_used' in get_applicable_actions"
 print("OK")
 
-# Test 14: Invalid parser name returns error
+# Test 17: Invalid parser name returns error
 print("TEST:INVALID_PARSER:", end="")
 result = get_trajectory(DOMAIN, PROBLEM, PLAN, parser="nonexistent")
 assert "error" in result, f"expected error for invalid parser, got {result}"
 print("OK")
 
-# Test 15-19: UP backend (skip if not installed)
+# Test 18+: UP backend (skip if not installed)
 try:
     from backend_up import UnifiedPlanningBackend
     UP_AVAILABLE = True

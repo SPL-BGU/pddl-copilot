@@ -7,6 +7,7 @@ Extracted from parser_server.py. All predicate strings use s-expression format.
 from pathlib import Path
 from typing import Optional
 import itertools
+import sys
 
 from pddl_plus_parser.exporters import TrajectoryExporter
 from pddl_plus_parser.lisp_parsers import DomainParser, ProblemParser
@@ -337,7 +338,8 @@ class PddlPlusBackend:
                         if len(applicable) >= max_results:
                             truncated = True
                             break
-                except Exception:
+                except (AttributeError, ValueError, TypeError, KeyError) as e:
+                    print(f"Warning: grounding {action.name} with {obj_list} failed: {e}", file=sys.stderr)
                     continue
 
             if grounding_cap_hit or truncated:

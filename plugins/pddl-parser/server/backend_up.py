@@ -13,6 +13,7 @@ import tempfile
 from typing import Any, Optional
 
 from unified_planning.io import PDDLReader
+from unified_planning.model.state import UPState
 from unified_planning.shortcuts import SequentialSimulator
 from unified_planning.plans import ActionInstance
 
@@ -129,8 +130,6 @@ class UnifiedPlanningBackend:
                     expr = fluent(*combo)
                     values[expr] = true_val if key in pred_set else false_val
 
-        from unified_planning.model.state import UPState
-        # UPState(values, problems_fluent_set) — Problem implements FluentsSetMixin
         return UPState(values, up_problem)
 
     def _resolve_state(self, state_preds, up_problem, simulator):
@@ -299,30 +298,19 @@ class UnifiedPlanningBackend:
         finally:
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    @staticmethod
-    def _extract_problem_object_names(problem_path: str) -> Optional[set]:
-        """Extract object names from problem's (:objects ...) section.
-
-        Note: assumes standard PDDL typed lists (``name - type``).
-        Does not handle ``(either ...)`` type syntax.
-        """
-        with open(problem_path) as f:
-            content = f.read()
-        m = re.search(r'\(:objects\s+(.*?)\)', content, re.DOTALL)
-        if not m:
-            return set()
-        parts = m.group(1).split()
-        names = set()
-        skip_next = False
-        for part in parts:
-            if part == '-':
-                skip_next = True
-                continue
-            if skip_next:
-                skip_next = False
-                continue
-            names.add(part)
-        return names
+    def _get_domain_constant_names(self, domain_path: str) -> set[str]:
+        """Get names of domain constants by parsing domain with an empty problem."""
+        domain_name = self._extract_domain_name(domain_path)
+        dummy = f"(define (problem dc) (:domain {domain_name}) (:init) (:goal (and)))"
+        tmp_dir = tempfile.mkdtemp(prefix="up-dc-")
+        try:
+            dp = os.path.join(tmp_dir, "problem.pddl")
+            with open(dp, "w") as f:
+                f.write(dummy)
+            dummy_problem = self._parse(domain_path, dp)
+            return {obj.name for obj in dummy_problem.all_objects}
+        finally:
+            shutil.rmtree(tmp_dir, ignore_errors=True)
 
     def inspect_problem(
         self, domain_path: str, problem_path: str
@@ -333,10 +321,10 @@ class UnifiedPlanningBackend:
         init_preds = self._state_to_preds(init_state, up_problem)
 
         # Filter to problem objects only (exclude domain constants)
-        problem_obj_names = self._extract_problem_object_names(problem_path)
+        domain_constants = self._get_domain_constant_names(domain_path)
         objects_info = []
         for obj in up_problem.all_objects:
-            if problem_obj_names is not None and obj.name not in problem_obj_names:
+            if obj.name in domain_constants:
                 continue
             type_name = obj.type.name if hasattr(obj.type, 'name') else str(obj.type)
             objects_info.append({"name": obj.name, "type": type_name})
@@ -466,8 +454,8 @@ class UnifiedPlanningBackend:
                         if len(applicable) >= max_results:
                             truncated = True
                             break
-                except Exception:
-                    pass
+                except (AttributeError, ValueError, TypeError, KeyError) as e:
+                    print(f"Warning: grounding {action.name}() failed: {e}", file=sys.stderr)
                 continue
 
             # Build object lists per parameter type
@@ -496,7 +484,8 @@ class UnifiedPlanningBackend:
                         if len(applicable) >= max_results:
                             truncated = True
                             break
-                except Exception:
+                except (AttributeError, ValueError, TypeError, KeyError) as e:
+                    print(f"Warning: grounding {action.name} with {combo} failed: {e}", file=sys.stderr)
                     continue
 
             if grounding_cap_hit or truncated:

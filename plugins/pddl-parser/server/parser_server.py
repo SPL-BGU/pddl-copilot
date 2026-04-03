@@ -106,7 +106,7 @@ def _clean_plan_lines(plan_path: str) -> List[str]:
     return actions
 
 
-from backends import compact_pddl as _compact_pddl, DomainInfo
+from backends import compact_pddl, DomainInfo
 
 
 def _resolve_state_preds(state_input: str) -> Optional[list[str]]:
@@ -202,7 +202,7 @@ def _lightweight_parse_problem(content: str) -> dict:
     init_body = _extract_pddl_section(content, ":init")
     if init_body:
         init_preds = re.findall(r"\([^()]+\)", init_body)
-        init_preds = [_compact_pddl(p) for p in init_preds]
+        init_preds = [compact_pddl(p) for p in init_preds]
     result["init"] = sorted(init_preds)
 
     # Goal predicates — extract from (:goal ...)
@@ -215,7 +215,7 @@ def _lightweight_parse_problem(content: str) -> dict:
         if and_match:
             goal_stripped = and_match.group(1)
         goal_preds = re.findall(r"\([^()]+\)", goal_stripped)
-        goal_preds = [_compact_pddl(p) for p in goal_preds]
+        goal_preds = [compact_pddl(p) for p in goal_preds]
     result["goal"] = sorted(goal_preds)
 
     return result
@@ -506,8 +506,8 @@ def diff_states(
         Success: {"added": [...], "removed": [...], "unchanged": [...]}
         Error: {"error": True, "message": str}"""
     try:
-        before = set(_compact_pddl(p) for p in json.loads(state_before))
-        after = set(_compact_pddl(p) for p in json.loads(state_after))
+        before = set(compact_pddl(p) for p in json.loads(state_before))
+        after = set(compact_pddl(p) for p in json.loads(state_after))
     except (json.JSONDecodeError, TypeError) as e:
         return {"error": True, "message": f"Invalid JSON: {e}"}
 
