@@ -35,6 +35,20 @@
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
       "keywords": ["pddl", "validation", "val", "state-transition"]
+    },
+    {
+      "name": "pddl-parser",
+      "description": "PDDL introspection, trajectory generation, applicability checking, and state analysis. Pure Python, no Docker.",
+      "author": {
+        "name": "SPL-BGU"
+      },
+      "license": "MIT",
+      "version": "1.1.1",
+      "source": "./plugins/pddl-parser",
+      "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+      "repository": "https://github.com/SPL-BGU/pddl-copilot",
+      "category": "planning",
+      "keywords": ["pddl", "parser", "trajectory", "state-transition", "introspection", "applicability"]
     }
   ]
 }

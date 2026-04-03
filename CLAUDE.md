@@ -15,6 +15,7 @@ This repository is a Claude Code plugin marketplace. Each plugin lives in its ow
 
 - **pddl-solver** (`plugins/pddl-solver/`) — PDDL planning using Fast Downward and Metric-FF in Docker
 - **pddl-validator** (`plugins/pddl-validator/`) — PDDL validation and state transition simulation using VAL in Docker
+- **pddl-parser** (`plugins/pddl-parser/`) — PDDL parsing and structured trajectory generation with dual-backend support: pddl-plus-parser (default) and unified-planning (pure Python, no Docker)
 
 ## Ollama MCP Bridge
 

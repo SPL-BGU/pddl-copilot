@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__pddl-parser__get_trajectory",
+      "mcp__pddl-parser__inspect_domain",
+      "mcp__pddl-parser__inspect_problem",
+      "mcp__pddl-parser__check_applicable",
+      "mcp__pddl-parser__diff_states",
+      "mcp__pddl-parser__normalize_pddl",
+      "mcp__pddl-parser__get_applicable_actions"
+    ]
+  }
+}
