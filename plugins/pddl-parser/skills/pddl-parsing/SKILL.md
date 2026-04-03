@@ -22,10 +22,10 @@ allowed-tools: mcp__pddl-parser__get_trajectory, mcp__pddl-parser__inspect_domai
 ## Parser Backends
 
 Tools that accept a `parser` parameter can use either backend:
-- **pddl-plus-parser** (default, always available): Full STRIPS/numeric support
-- **unified-planning** (optional): Full feature parity with pddl-plus-parser, including STRIPS, typing, conditional effects, and ADL features
+- **pddl-plus-parser** (default): Full STRIPS/numeric support
+- **unified-planning**: Full STRIPS, typing, conditional effects, and ADL features
 
-Both backends produce identical canonical output for the same input. When `parser` is null (default), the server tries pddl-plus-parser first, then falls back to unified-planning if available. Responses include a `parser_used` field indicating which backend produced the result.
+Both backends are bundled and always available. They produce identical canonical output for the same input. When `parser` is null (default), the server uses pddl-plus-parser. Responses include a `parser_used` field indicating which backend produced the result.
 
 ## Tools
 
