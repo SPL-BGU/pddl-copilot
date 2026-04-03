@@ -105,18 +105,17 @@ class PddlPlusBackend:
 
     @staticmethod
     def _get_objects_by_type(parsed_domain, parsed_problem) -> dict:
-        objects_by_type = {}
+        objects_by_type: dict[str, set] = {}
         all_objects = {**parsed_domain.constants, **parsed_problem.objects}
         for obj_name, obj in all_objects.items():
             current_type = obj.type
             while current_type is not None:
                 type_name = current_type.name
                 if type_name not in objects_by_type:
-                    objects_by_type[type_name] = []
-                if obj_name not in objects_by_type[type_name]:
-                    objects_by_type[type_name].append(obj_name)
+                    objects_by_type[type_name] = set()
+                objects_by_type[type_name].add(obj_name)
                 current_type = getattr(current_type, "parent", None)
-        return objects_by_type
+        return {k: list(v) for k, v in objects_by_type.items()}
 
     # -- Protocol methods --------------------------------------------------
 

@@ -162,6 +162,7 @@ assert "name" in result["normalized"], f"expected 'name' in normalized json"
 result_pddl = normalize_pddl(DOMAIN, output_format="pddl")
 assert result_pddl["valid"] is True
 assert "(define" in result_pddl["normalized"], f"expected PDDL content in pddl format"
+assert "object - object" not in result_pddl["normalized"], f"implicit 'object' type should not appear in PDDL output: {result_pddl['normalized']}"
 print("OK")
 
 # Test 10: normalize_pddl with invalid content

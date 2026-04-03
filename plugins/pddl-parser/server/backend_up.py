@@ -7,6 +7,8 @@ All predicate strings use PDDL s-expression format: (pred obj1 obj2)
 import itertools
 import os
 import re
+import shutil
+import sys
 import tempfile
 from typing import Any, Optional
 
@@ -202,6 +204,7 @@ class UnifiedPlanningBackend:
             else:
                 return f"({fluent.name})"
 
+        print(f"Warning: unhandled FNode type in _fnode_to_pddl: {type(expr).__name__}", file=sys.stderr)
         return str(expr)
 
     def _make_binding(self, action_schema, param_objects) -> dict:
@@ -294,12 +297,15 @@ class UnifiedPlanningBackend:
             up_problem = self._parse(domain_path, dummy_path)
             return self._extract_domain_info(up_problem, domain_name, domain_path)
         finally:
-            import shutil
             shutil.rmtree(tmp_dir, ignore_errors=True)
 
     @staticmethod
     def _extract_problem_object_names(problem_path: str) -> Optional[set]:
-        """Extract object names from problem's (:objects ...) section."""
+        """Extract object names from problem's (:objects ...) section.
+
+        Note: assumes standard PDDL typed lists (``name - type``).
+        Does not handle ``(either ...)`` type syntax.
+        """
         with open(problem_path) as f:
             content = f.read()
         m = re.search(r'\(:objects\s+(.*?)\)', content, re.DOTALL)
@@ -387,7 +393,7 @@ class UnifiedPlanningBackend:
                     satisfied.append(grounded_str)
                 else:
                     unsatisfied.append(grounded_str)
-            except Exception:
+            except (AttributeError, ValueError, TypeError):
                 # Fallback: string-based check for simple atomic predicates
                 is_neg = hasattr(precond, 'is_not') and precond.is_not()
                 if is_neg:
@@ -413,7 +419,7 @@ class UnifiedPlanningBackend:
                 try:
                     if not se.evaluate(grounded_cond, state).bool_constant_value():
                         continue
-                except Exception:
+                except (AttributeError, ValueError, TypeError):
                     continue
             fluent_str = self._fnode_to_pddl(effect.fluent, schema, binding)
             if effect.value.is_true():
@@ -523,7 +529,7 @@ class UnifiedPlanningBackend:
         """Extract requirements from PDDL domain file via regex."""
         with open(domain_path) as f:
             content = f.read()
-        m = re.search(r'\(:requirements\s+(.*?)\)', content)
+        m = re.search(r'\(:requirements\s+(.*?)\)', content, re.DOTALL)
         if not m:
             return None
         return sorted(m.group(1).split())

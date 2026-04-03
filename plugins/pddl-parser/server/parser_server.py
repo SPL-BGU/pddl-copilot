@@ -229,9 +229,11 @@ def _domain_info_to_pddl(info: DomainInfo) -> str:
         lines.append(f"  (:requirements {' '.join(info.requirements)})")
 
     if info.types:
-        # Group types by parent
+        # Group types by parent (skip implicit "object" root)
         by_parent: dict = {}
         for tname, parent in info.types.items():
+            if tname == "object":
+                continue
             key = parent or "object"
             by_parent.setdefault(key, []).append(tname)
         type_strs = []
@@ -504,8 +506,8 @@ def diff_states(
         Success: {"added": [...], "removed": [...], "unchanged": [...]}
         Error: {"error": True, "message": str}"""
     try:
-        before = set(json.loads(state_before))
-        after = set(json.loads(state_after))
+        before = set(_compact_pddl(p) for p in json.loads(state_before))
+        after = set(_compact_pddl(p) for p in json.loads(state_after))
     except (json.JSONDecodeError, TypeError) as e:
         return {"error": True, "message": f"Invalid JSON: {e}"}
 
