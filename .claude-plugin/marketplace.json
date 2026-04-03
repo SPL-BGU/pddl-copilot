@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "PDDL planning and validation tools for Claude Code",
-    "version": "1.1.1"
+    "version": "1.2.0"
   },
   "plugins": [
     {
@@ -15,7 +15,7 @@
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "source": "./plugins/pddl-solver",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
@@ -29,7 +29,7 @@
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "source": "./plugins/pddl-validator",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
@@ -43,7 +43,7 @@
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.1.1",
+      "version": "1.2.0",
       "source": "./plugins/pddl-parser",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",

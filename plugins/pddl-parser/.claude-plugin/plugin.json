@@ -1,6 +1,6 @@
 {
   "name": "pddl-parser",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "PDDL introspection, trajectory generation, applicability checking, and state analysis. Pure Python, no Docker.",
   "author": {
     "name": "SPL-BGU"
