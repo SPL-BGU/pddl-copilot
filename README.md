@@ -8,10 +8,11 @@ A Claude Code plugin marketplace for PDDL planning and validation tools.
 |--------|-------------|
 | [pddl-solver](plugins/pddl-solver/) | Compute plans using Fast Downward (classical) and Metric-FF (numeric) in Docker |
 | [pddl-validator](plugins/pddl-validator/) | Validate PDDL syntax, plans, and simulate state transitions using VAL in Docker |
+| [pddl-parser](plugins/pddl-parser/) | Parse PDDL domains/problems and generate structured trajectories (pure Python, no Docker) |
 
 ## Prerequisites
 
-- [Docker](https://docker.com) must be installed and running
+- [Docker](https://docker.com) must be installed and running (required for `pddl-solver` and `pddl-validator`; `pddl-parser` is pure Python and does not require Docker)
 
 ## Installation
 
@@ -61,6 +62,8 @@ A Claude Code plugin marketplace for PDDL planning and validation tools.
    │    PDDL planning with Fast Downward & Metric-FF  │
    │    pddl-validator                                │
    │    PDDL validation with VAL                      │
+   │    pddl-parser                                   │
+   │    PDDL parsing and structured trajectories      │
    └─────────────────────────────────────────────────┘
    ```
 
@@ -73,6 +76,7 @@ Plugins are installed globally — start Claude Code from any project directory 
 ```bash
 claude --plugin-dir ./plugins/pddl-solver
 claude --plugin-dir ./plugins/pddl-validator
+claude --plugin-dir ./plugins/pddl-parser
 ```
 
 ## Use with Other AI Tools
@@ -102,6 +106,10 @@ Both tools need two things: an MCP server config and skill symlinks.
     "pddl-validator": {
       "command": "bash",
       "args": ["/absolute/path/to/plugins/pddl-validator/scripts/launch-server.sh"]
+    },
+    "pddl-parser": {
+      "command": "bash",
+      "args": ["/absolute/path/to/plugins/pddl-parser/scripts/launch-server.sh"]
     }
   }
 }
@@ -112,10 +120,12 @@ Both tools need two things: an MCP server config and skill symlinks.
 # Cursor
 ln -sfn /absolute/path/to/plugins/pddl-solver/skills/pddl-planning ~/.cursor/skills/pddl-planning
 ln -sfn /absolute/path/to/plugins/pddl-validator/skills/pddl-validation ~/.cursor/skills/pddl-validation
+ln -sfn /absolute/path/to/plugins/pddl-parser/skills/pddl-parsing ~/.cursor/skills/pddl-parsing
 
 # Antigravity
 ln -sfn /absolute/path/to/plugins/pddl-solver/skills/pddl-planning ~/.gemini/antigravity/skills/pddl-planning
 ln -sfn /absolute/path/to/plugins/pddl-validator/skills/pddl-validation ~/.gemini/antigravity/skills/pddl-validation
+ln -sfn /absolute/path/to/plugins/pddl-parser/skills/pddl-parsing ~/.gemini/antigravity/skills/pddl-parsing
 ```
 
 Replace `/absolute/path/to` with the actual path where you cloned this repo.
@@ -141,7 +151,7 @@ python3 ollama_mcp_bridge.py
 Or non-interactively:
 
 ```bash
-python3 ollama_mcp_bridge.py --model qwen3:4b --plugins pddl-solver,pddl-validator
+python3 ollama_mcp_bridge.py --model qwen3:4b --plugins pddl-solver,pddl-validator,pddl-parser
 ```
 
 ### Requirements
@@ -181,12 +191,20 @@ pddl-copilot/
 │   │   ├── skills/pddl-planning/
 │   │   ├── scripts/launch-server.sh
 │   │   └── tests/verify.sh
-│   └── pddl-validator/        # Validation plugin
+│   ├── pddl-validator/        # Validation plugin
+│   │   ├── .mcp.json
+│   │   ├── CLAUDE.md
+│   │   ├── .claude/settings.json
+│   │   ├── server/validator_server.py
+│   │   ├── skills/pddl-validation/
+│   │   ├── scripts/launch-server.sh
+│   │   └── tests/verify.sh
+│   └── pddl-parser/           # Parsing plugin (pure Python)
 │       ├── .mcp.json
 │       ├── CLAUDE.md
 │       ├── .claude/settings.json
-│       ├── server/validator_server.py
-│       ├── skills/pddl-validation/
+│       ├── server/parser_server.py
+│       ├── skills/pddl-parsing/
 │       ├── scripts/launch-server.sh
 │       └── tests/verify.sh
 ├── tests/
