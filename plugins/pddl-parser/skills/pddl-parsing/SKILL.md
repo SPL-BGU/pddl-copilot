@@ -1,225 +1,67 @@
 ---
 name: pddl-parsing
-description: Activates when the user asks to inspect, parse, or understand PDDL domains/problems, generate trajectories, check action applicability, compare states, normalize PDDL, or explore applicable actions.
+description: Use when the user asks to understand a PDDL domain or problem, trace a plan step-by-step, debug why an action fails, explore what actions are possible from a state, or check PDDL structure without Docker.
 allowed-tools: mcp__pddl-parser__get_trajectory, mcp__pddl-parser__inspect_domain, mcp__pddl-parser__inspect_problem, mcp__pddl-parser__check_applicable, mcp__pddl-parser__diff_states, mcp__pddl-parser__normalize_pddl, mcp__pddl-parser__get_applicable_actions
 ---
 
-# PDDL Parsing & Introspection Skill
+## You CANNOT reliably compute PDDL states or action effects
 
-## CRITICAL RULES
+LLMs fail at tracking predicate sets through action sequences. Always use the parser tools — do not manually simulate, trace, or guess state changes.
 
-1. **Always use tools** for PDDL analysis. Do NOT fabricate state representations, action effects, or applicability results — LLMs cannot reliably compute these.
-2. **Report errors verbatim** from tool output. Common causes: mismatched domain/problem names, undefined actions, type mismatches.
-3. **Use `inspect_domain` before answering structural questions** about a domain (actions, predicates, types). Do not guess from reading raw PDDL.
-4. **Use `check_applicable` to debug plan failures.** When a plan fails at step N, check the failing action against the state at that point.
+### Available tools
 
-## Input Formats (all tools)
+**Understand structure:**
+- `inspect_domain(domain, problem?, parser?)` — Domain structure: actions, predicates, types. Add problem for objects, init, goal.
+- `inspect_problem(domain, problem, parser?)` — Problem details: objects, initial state, goal conditions.
 
-- **Inline content**: strings starting with `(`, `;`, or containing `(define ` are treated as PDDL content
-- **File paths**: absolute paths to existing `.pddl` files
-- **State parameters**: either the string `"initial"` or a JSON array of predicate strings like `["(clear a)", "(on a b)"]`
+**Debug and trace:**
+- `get_trajectory(domain, problem, plan, parser?)` — Simulate a plan step-by-step, get full state-action-state trace.
+- `check_applicable(domain, problem, state, action, parser?)` — Test if an action is applicable; shows satisfied/unsatisfied preconditions.
+- `diff_states(state_before, state_after)` — Compare two states: what was added, removed, unchanged.
 
-## Parser Backends
+**Explore and normalize:**
+- `get_applicable_actions(domain, problem, state?, max_results?, parser?)` — List all applicable grounded actions in a state.
+- `normalize_pddl(content, domain?, output_format?)` — Parse PDDL into structured JSON; quick syntax check without Docker.
 
-Tools that accept a `parser` parameter can use either backend:
-- **pddl-plus-parser** (default): Full STRIPS/numeric support
-- **unified-planning**: Full STRIPS, typing, conditional effects, and ADL features
+### Default workflow: debug a failing plan
 
-Both backends are bundled and always available. They produce identical canonical output for the same input. When `parser` is null (default), the server uses pddl-plus-parser. Responses include a `parser_used` field indicating which backend produced the result.
+1. `get_trajectory(domain, problem, plan)` — find where execution fails
+2. `check_applicable(domain, problem, state_at_failure, failing_action)` — identify which preconditions are unsatisfied
+3. `inspect_domain(domain)` — understand the action's full definition if needed
+4. Report the failure cause and suggest a fix
 
-## Tools
+### Exploration workflow: understand a new domain
 
-### `inspect_domain(domain, problem?, parser?)` -> structured JSON
+1. `inspect_domain(domain, problem)` — get full structure with grounded details
+2. `get_applicable_actions(domain, problem, "initial")` — see what actions are possible
+3. Walk the user through the domain's mechanics
 
-Returns the domain's name, requirements, type hierarchy, predicates, and actions. When a problem is also provided, adds grounded details: objects, initial state, and goal — giving a complete picture of the domain-scenario.
+### What you MUST NOT do
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `domain`  | Yes | PDDL domain content string or absolute file path |
-| `problem` | No | PDDL problem content string or file path. Adds grounded details (objects, init, goal) |
-| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
+- Do NOT manually trace action effects or compute resulting states — use `get_trajectory` or `check_applicable`
+- Do NOT guess predicates, types, or action parameters from memory — use `inspect_domain` or `inspect_problem`
+- Do NOT claim a plan is valid or invalid without running it through `get_trajectory`
+- Do NOT invent results if a tool fails — report the error verbatim
 
-**Returns (domain only):**
-```json
-{
-  "name": "blocksworld",
-  "requirements": [":strips", ":typing"],
-  "types": {"block": "object"},
-  "predicates": [{"name": "on", "parameters": {"?x": "block", "?y": "block"}}],
-  "actions": [{"name": "pick-up", "parameters": {"?x": "block"}, "precondition": "(and ...)", "effect": "(and ...)"}]
-}
-```
+### Input formats
 
-**Returns (domain + problem) — adds:**
-```json
-{
-  "objects": [{"name": "a", "type": "block"}],
-  "init": ["(clear a)", "(ontable a)", "(handempty)"],
-  "goal": ["(on a b)"],
-  "num_objects": 2, "num_init_facts": 5, "num_goal_conditions": 1
-}
-```
+All tools accept either inline PDDL content strings or absolute file paths. State parameters accept `"initial"` or a JSON array like `["(clear a)", "(on a b)"]`.
 
-### `inspect_problem(domain, problem, parser?)` -> structured JSON
+### Parser backends
 
-Returns the problem's name, objects with types, initial state predicates, goal conditions, and counts.
+Both backends are always available. Default (null) auto-selects with fallback.
+- **pddl-plus-parser** (default): STRIPS + numeric fluents (`:functions`, `increase`, `decrease`)
+- **unified-planning**: STRIPS + ADL features (`:conditional-effects`, `:existential-preconditions`, `:universal-preconditions`, `:disjunctive-preconditions`)
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `domain`  | Yes | PDDL domain content string or absolute file path |
-| `problem` | Yes | PDDL problem content string or absolute file path |
-| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
+If the domain uses numeric fluents, pass `parser="pddl-plus-parser"`. If it uses ADL/conditional effects, pass `parser="unified-planning"`. For plain STRIPS, either works — let auto-select handle it.
 
-**Returns:**
-```json
-{
-  "name": "bw1", "domain_name": "blocksworld",
-  "objects": [{"name": "a", "type": "block"}],
-  "init": ["(clear a)", "(handempty)", "(ontable a)"],
-  "goal": ["(on a b)"],
-  "num_objects": 2, "num_init_facts": 5, "num_goal_conditions": 1
-}
-```
+### Cross-plugin workflows (optional)
 
-### `check_applicable(domain, problem, state, action, parser?)` -> applicability report
+- **Solve then trace**: After `classic_planner` returns a plan (pddl-solver, if installed), use `get_trajectory` to trace execution.
+- **Write then validate**: After writing PDDL, use `normalize_pddl` for a quick syntax check. For thorough validation, use `validate_pddl_syntax` (pddl-validator, if installed).
 
-Checks whether a grounded action is applicable in a given state. Reports which preconditions are satisfied/unsatisfied and what effects would be applied.
+### If a tool returns an error
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `domain`  | Yes | PDDL domain content string or absolute file path |
-| `problem` | Yes | PDDL problem content string or absolute file path |
-| `state`   | Yes | `"initial"` or JSON array of predicate strings |
-| `action`  | Yes | Grounded action call, e.g. `"(pick-up a)"` |
-| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
-
-**Returns:**
-```json
-{
-  "applicable": true,
-  "satisfied_preconditions": ["(clear a)", "(handempty)", "(ontable a)"],
-  "unsatisfied_preconditions": [],
-  "would_add": ["(holding a)"],
-  "would_delete": ["(clear a)", "(handempty)", "(ontable a)"]
-}
-```
-
-### `get_trajectory(domain, problem, plan, parser?)` -> trajectory JSON
-
-Parses domain and problem, simulates plan step-by-step, returns full state-action-state trajectory.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `domain`  | Yes | PDDL domain content string or absolute file path |
-| `problem` | Yes | PDDL problem content string or absolute file path |
-| `plan`    | Yes | Plan content (one action per line) or absolute file path |
-| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
-
-**Returns:**
-```json
-{
-  "trajectory": {
-    "1": {"state": "(:init ...)", "action": "(pick-up a)"},
-    "2": {"state": "(:state ...)", "action": "(stack a b)"}
-  },
-  "final_state": "(:state ...)",
-  "num_steps": 2
-}
-```
-
-### `diff_states(state_before, state_after)` -> state comparison
-
-Computes the difference between two states: added, removed, and unchanged predicates.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `state_before` | Yes | JSON array of predicate strings |
-| `state_after`  | Yes | JSON array of predicate strings |
-
-**Returns:**
-```json
-{
-  "added": ["(on a b)"],
-  "removed": ["(holding a)"],
-  "unchanged": ["(ontable b)"]
-}
-```
-
-### `normalize_pddl(content, domain?, output_format?)` -> unified JSON
-
-Parses PDDL content (domain or problem) into a unified structured JSON representation. Bridges both parser backends into a common form.
-
-- **Domain content**: full domain structure (types, predicates, actions)
-- **Problem content + domain**: full validated problem structure (objects, init, goal)
-- **Problem content, no domain**: lightweight parse — extracts objects, init, goal without validation
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `content` | Yes | PDDL domain or problem content string |
-| `domain`  | No | Domain content/path. Required for full problem parsing; without it, problem parsing is partial |
-| `output_format` | No | `"json"` (default) for structured JSON, `"pddl"` for normalized PDDL text (domain only) |
-
-**Returns (domain):**
-```json
-{"valid": true, "type": "domain", "normalized": {"name": "bw", "types": {...}, ...}, "warnings": []}
-```
-
-**Returns (problem + domain):**
-```json
-{"valid": true, "type": "problem", "normalized": {"name": "bw1", "objects": [...], "init": [...], "goal": [...], "parser_used": "..."}, "warnings": []}
-```
-
-**Returns (problem, no domain):**
-```json
-{"valid": true, "type": "problem", "normalized": {"name": "bw1", "objects": [...], "init": [...], "goal": [...]}, "warnings": ["Parsed without domain..."]}
-```
-
-### `get_applicable_actions(domain, problem, state, max_results, parser?)` -> action list
-
-Enumerates all applicable grounded actions in a given state.
-
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `domain`  | Yes | PDDL domain content string or absolute file path |
-| `problem` | Yes | PDDL problem content string or absolute file path |
-| `state`   | No | `"initial"` (default) or JSON array of predicate strings |
-| `max_results` | No | Maximum results to return (default: 50) |
-| `parser`  | No | `"pddl-plus-parser"`, `"unified-planning"`, or null (auto-select with fallback) |
-
-**Returns:**
-```json
-{
-  "applicable_actions": ["(pick-up a)", "(pick-up b)"],
-  "count": 2,
-  "truncated": false
-}
-```
-
-## Error Format (all tools)
-
-```json
-{"error": true, "message": "description of what went wrong"}
-```
-
-## Cross-Plugin Workflows
-
-### Debug a Failing Plan
-1. `get_trajectory(domain, problem, plan)` -> see where execution fails
-2. `check_applicable(domain, problem, state_at_failure, failing_action)` -> identify which preconditions fail
-3. `inspect_domain(domain)` -> understand the action's requirements
-
-### Write and Validate PDDL
-1. Write PDDL domain
-2. `normalize_pddl(content)` -> quick Tier-1 syntax check (no Docker)
-3. `validate_pddl_syntax(domain, problem)` -> thorough VAL check (pddl-validator plugin, if installed)
-4. `inspect_domain(domain)` -> verify structure matches intent
-
-### Solve and Trace
-1. `classic_planner(domain, problem)` -> get plan (pddl-solver plugin, if installed)
-2. `get_trajectory(domain, problem, plan)` -> trace full execution
-3. `diff_states(state_before, state_after)` -> understand changes at each step
-
-### Explore State Space
-1. `inspect_problem(domain, problem)` -> understand initial state and objects
-2. `get_applicable_actions(domain, problem, "initial")` -> what can we do first?
-3. `check_applicable(domain, problem, "initial", action)` -> preview effects of a specific action
+1. **"No PDDL parser backend available"** — The Python environment is broken. Tell the user to delete `.venv/` in the plugin directory and restart Claude Code.
+2. **"All parsers failed"** — The PDDL is likely malformed. Ask the user to check syntax. Try `normalize_pddl` for a structured error message.
+3. **"File not found"** — The path is wrong. Verify the file exists and use an absolute path.
