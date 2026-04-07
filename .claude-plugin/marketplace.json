@@ -10,17 +10,17 @@
   "plugins": [
     {
       "name": "pddl-solver",
-      "description": "Solve PDDL planning problems — supports classical and numeric (PDDL 2.1) domains. Runs in Docker.",
+      "description": "Solve PDDL planning problems — supports classical and numeric (PDDL 2.1) domains. Pure pip install, no Docker.",
       "author": {
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "source": "./plugins/pddl-solver",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
-      "keywords": ["pddl", "planning", "fast-downward", "metric-ff"]
+      "keywords": ["pddl", "planning", "fast-downward", "enhsp", "unified-planning"]
     },
     {
       "name": "pddl-validator",

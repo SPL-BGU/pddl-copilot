@@ -1,49 +1,33 @@
 """
-pddl_server.py — MCP server wrapping Fast Downward, Metric-FF, and VAL.
+pddl_server.py — MCP server wrapping VAL for PDDL validation.
 
-Calls planner binaries directly via subprocess inside a Docker container.
+Calls VAL binary directly via subprocess inside a Docker container.
 Accepts inline PDDL content strings (starting with '(') or file paths.
+
+Note: This is the baked-in fallback server for the Docker image.
+At runtime, each plugin volume-mounts its own server script over this file.
+The pddl-solver plugin no longer uses Docker (migrated to unified-planning pip engines).
 """
 
 from contextlib import contextmanager
-from typing import Annotated, Literal
+from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
-import glob as globmod
 import os
 import shutil
 import subprocess
-import time
 import uuid
 
-mcp = FastMCP("pddl-planner")
+mcp = FastMCP("pddl-validator")
 
 # ---------------------------------------------------------------------------
 # Configuration (overridable via environment variables)
 # ---------------------------------------------------------------------------
-FD_PATH = os.environ.get("PDDL_FD_PATH", "/opt/planners/FastDownward")
-MFF_PATH = os.environ.get("PDDL_MFF_PATH", "/opt/planners/METRIC_FF")
 VAL_PATH = os.environ.get("PDDL_VAL_PATH", "/opt/planners/VAL")
 TEMP_DIR = os.environ.get("PDDL_TEMP_DIR", "/tmp/pddl")
 DEFAULT_TIMEOUT = int(os.environ.get("PDDL_TIMEOUT", "120"))
-DEFAULT_PLANS_DIR = "/workspace/plans"
 
 os.makedirs(TEMP_DIR, exist_ok=True)
-
-# Fast Downward search strategy presets
-FD_STRATEGIES = {
-    "lazy_greedy_cea": [
-        "--evaluator", "hcea=cea()",
-        "--search", "lazy_greedy([hcea], preferred=[hcea])",
-    ],
-    "astar_lmcut": [
-        "--search", "astar(lmcut())",
-    ],
-    "lazy_greedy_ff": [
-        "--evaluator", "hff=ff()",
-        "--search", "lazy_greedy([hff], preferred=[hff])",
-    ],
-}
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -71,7 +55,7 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
             f.write(content_or_path)
         return path
 
-    # First, is it already a valid container path? 
+    # First, is it already a valid container path?
     if os.path.isfile(stripped):
         return stripped
 
@@ -96,23 +80,6 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
     )
 
 
-def _host_to_container(path: str) -> str:
-    """Translate a host absolute path to a container path, or return as-is."""
-    host_pwd = os.environ.get("HOST_PWD", "")
-    if host_pwd and path.startswith(host_pwd):
-        return "/workspace/" + path[len(host_pwd):].lstrip("/")
-    return path
-
-
-def _container_to_host(path: str) -> str:
-    """Translate a container /workspace path to the host equivalent."""
-    host_pwd = os.environ.get("HOST_PWD", "")
-    if host_pwd and path.startswith("/workspace"):
-        relative = path[len("/workspace"):].lstrip("/")
-        return os.path.join(host_pwd, relative) if relative else host_pwd
-    return path
-
-
 def _run(args: list[str], cwd: str = None, timeout: int = None) -> subprocess.CompletedProcess:
     """Run a subprocess with argument list (no shell). Returns CompletedProcess."""
     return subprocess.run(
@@ -120,75 +87,6 @@ def _run(args: list[str], cwd: str = None, timeout: int = None) -> subprocess.Co
         capture_output=True, text=True,
         timeout=timeout or DEFAULT_TIMEOUT,
     )
-
-
-# ---------------------------------------------------------------------------
-# Fast Downward helpers
-# ---------------------------------------------------------------------------
-
-def _clean_fd_artifacts():
-    """Remove Fast Downward temporary files between runs."""
-    for name in ("output.sas", "output"):
-        p = os.path.join(FD_PATH, name)
-        if os.path.isfile(p):
-            os.remove(p)
-    # Also clean numbered plan files
-    for p in globmod.glob(os.path.join(FD_PATH, "sas_plan*")):
-        os.remove(p)
-
-
-def _parse_fd_plan(stdout: str) -> list[str]:
-    """Parse Fast Downward plan from sas_plan file(s), falling back to stdout."""
-    # FD may write sas_plan, sas_plan.1, sas_plan.2, etc.
-    plan_files = sorted(globmod.glob(os.path.join(FD_PATH, "sas_plan*")))
-    for plan_file in plan_files:
-        plan = []
-        with open(plan_file) as f:
-            for line in f:
-                line = line.strip().rstrip("\r")
-                # Strip cost annotations like "; cost = 1"
-                if ";" in line:
-                    line = line[:line.index(";")].strip()
-                if line.startswith("("):
-                    plan.append(line.lower())
-        if plan:
-            return plan
-
-    # Fallback: parse from stdout (some FD versions print plan inline)
-    plan = []
-    in_plan = False
-    for line in stdout.splitlines():
-        if "Actual search time" in line:
-            in_plan = True
-            continue
-        if in_plan:
-            if "Plan length:" in line:
-                break
-            stripped = line.strip()
-            if ";" in stripped:
-                stripped = stripped[:stripped.index(";")].strip()
-            if stripped.startswith("("):
-                plan.append(stripped.lower())
-    return plan
-
-
-def _parse_mff_plan(stdout: str) -> list[str]:
-    """Parse Metric-FF plan from stdout."""
-    plan = []
-    in_plan = False
-    for line in stdout.splitlines():
-        if "found legal plan as follows" in line.lower():
-            in_plan = True
-            continue
-        if in_plan:
-            stripped = line.strip()
-            if not stripped or "plan cost" in stripped.lower() or "time spent" in stripped.lower():
-                break
-            if ":" in stripped:
-                action = stripped.split(":", 1)[1].strip()
-                if action:
-                    plan.append(f"({action.lower()})")
-    return plan
 
 
 # ---------------------------------------------------------------------------
@@ -212,171 +110,6 @@ def _run_val(domain_path: str, problem_path: str = None,
 # ---------------------------------------------------------------------------
 # MCP Tools
 # ---------------------------------------------------------------------------
-
-@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
-def classic_planner(
-    domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
-    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
-    strategy: Annotated[Literal["lazy_greedy_cea", "astar_lmcut", "lazy_greedy_ff"], Field(description="Search strategy: 'lazy_greedy_cea' (fast, default), 'astar_lmcut' (optimal), 'lazy_greedy_ff' (fast, alternative).")] = "lazy_greedy_cea",
-) -> dict:
-    """Computes a plan for a classical PDDL planning problem using Fast Downward.
-    Does NOT support numeric fluents or durative actions — use numeric_planner for those.
-    Returns dict with 'plan' (action list, empty if unsolvable) and 'solve_time' (seconds).
-    On failure returns dict with 'error' and 'message'."""
-    if strategy not in FD_STRATEGIES:
-        return {
-            "error": True,
-            "message": f"Unknown strategy '{strategy}'. Available: {', '.join(FD_STRATEGIES.keys())}",
-        }
-
-    with _request_dir() as rd:
-        try:
-            dp = _ensure_file(domain, "domain.pddl", rd)
-            pp = _ensure_file(problem, "problem.pddl", rd)
-        except FileNotFoundError as e:
-            return {"error": True, "message": str(e)}
-
-        _clean_fd_artifacts()
-
-        args = ["python3", "fast-downward.py", dp, pp] + FD_STRATEGIES[strategy]
-        t1 = time.time()
-        try:
-            r = _run(args, cwd=FD_PATH)
-        except subprocess.TimeoutExpired:
-            _clean_fd_artifacts()
-            return {"error": True, "message": f"Fast Downward timed out after {DEFAULT_TIMEOUT}s"}
-        t2 = time.time()
-
-        combined = r.stdout + r.stderr
-        for phrase in ("unsolvable", "goal not fulfilled", "No plan will solve it"):
-            if phrase in combined:
-                _clean_fd_artifacts()
-                return {"plan": [], "solve_time": round(t2 - t1, 3), "note": "Problem is unsolvable"}
-
-        plan = _parse_fd_plan(r.stdout)
-        _clean_fd_artifacts()
-
-        if not plan:
-            # Include raw output so the agent can diagnose why parsing failed
-            return {
-                "plan": [],
-                "solve_time": round(t2 - t1, 3),
-                "exit_code": r.returncode,
-                "raw_stdout": r.stdout[-3000:] if r.stdout else "",
-                "raw_stderr": r.stderr[-1000:] if r.stderr else "",
-                "note": "Planner ran but no plan was parsed. Check raw output for details.",
-            }
-
-        return {"plan": plan, "solve_time": round(t2 - t1, 3)}
-
-
-@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
-def numeric_planner(
-    domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
-    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
-) -> dict:
-    """Computes a plan for a PDDL problem with numeric fluents (:functions, increase, decrease) using Metric-FF.
-    Use this instead of classic_planner when the domain uses :functions or numeric effects.
-    Does NOT support durative/temporal actions.
-    Returns dict with 'plan' (action list, empty if unsolvable) and 'solve_time' (seconds).
-    On failure returns dict with 'error' and 'message'."""
-    with _request_dir() as rd:
-        try:
-            dp = _ensure_file(domain, "domain.pddl", rd)
-            pp = _ensure_file(problem, "problem.pddl", rd)
-        except FileNotFoundError as e:
-            return {"error": True, "message": str(e)}
-
-        args = ["./ff", "-o", dp, "-f", pp, "-s", "0"]
-        t1 = time.time()
-        try:
-            r = _run(args, cwd=MFF_PATH)
-        except subprocess.TimeoutExpired:
-            return {"error": True, "message": f"Metric-FF timed out after {DEFAULT_TIMEOUT}s"}
-        t2 = time.time()
-
-        combined = r.stdout + r.stderr
-        for phrase in ("unsolvable", "goal not fulfilled", "No plan will solve it"):
-            if phrase in combined:
-                return {"plan": [], "solve_time": round(t2 - t1, 3), "note": "Problem is unsolvable"}
-
-        plan = _parse_mff_plan(r.stdout)
-
-        if not plan:
-            return {
-                "plan": [],
-                "solve_time": round(t2 - t1, 3),
-                "exit_code": r.returncode,
-                "raw_stdout": r.stdout[-3000:] if r.stdout else "",
-                "raw_stderr": r.stderr[-1000:] if r.stderr else "",
-                "note": "Planner ran but no plan was parsed. Check raw output for details.",
-            }
-
-        return {"plan": plan, "solve_time": round(t2 - t1, 3)}
-
-
-@mcp.tool(annotations={"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False})
-def save_plan(
-    plan: Annotated[list, Field(description="List of action strings to save.")],
-    domain: Annotated[str, Field(description="Domain path or content (used to derive filename and metadata).")] = None,
-    problem: Annotated[str, Field(description="Problem path or content (used to derive filename and metadata).")] = None,
-    name: Annotated[str, Field(description="Name for the plan file. Overrides domain/problem-based naming.")] = None,
-    output_dir: Annotated[str, Field(description="Directory to save the plan in. Defaults to ~/plans/.")] = None,
-    solve_time: Annotated[float, Field(description="Solve time in seconds (included in file metadata header).")] = None,
-) -> dict:
-    """Saves a computed plan to a file with metadata header.
-    Returns dict with 'file_path' (path where plan was saved) and 'plan_length' (number of actions)."""
-    # Tag derivation
-    if name:
-        tag = name
-    else:
-        parts = []
-        if domain and not domain.strip().startswith("(") and not domain.strip().startswith(";"):
-            dom_name = os.path.splitext(os.path.basename(domain.strip()))[0]
-            if dom_name.lower() != "domain":
-                parts.append(dom_name)
-        if problem and not problem.strip().startswith("(") and not problem.strip().startswith(";"):
-            prob_name = os.path.splitext(os.path.basename(problem.strip()))[0]
-            if prob_name.lower() != "problem":
-                parts.append(prob_name)
-        tag = "_".join(parts) if parts else uuid.uuid4().hex[:6]
-
-    # Resolve output directory
-    if output_dir:
-        container_dir = _host_to_container(output_dir.strip())
-    else:
-        container_dir = DEFAULT_PLANS_DIR
-    os.makedirs(container_dir, exist_ok=True)
-
-    # Avoid overwriting existing files
-    filepath = os.path.join(container_dir, f"plan_{tag}.solution")
-    if os.path.exists(filepath):
-        counter = 1
-        while os.path.exists(os.path.join(container_dir, f"plan_{tag}_{counter}.solution")):
-            counter += 1
-        filepath = os.path.join(container_dir, f"plan_{tag}_{counter}.solution")
-
-    # Write file with metadata header
-    with open(filepath, "w") as f:
-        f.write(f"; Plan generated at {time.strftime('%Y-%m-%d %H:%M:%S')}\n")
-        if domain and not domain.strip().startswith("(") and not domain.strip().startswith(";"):
-            f.write(f"; Domain: {os.path.basename(domain.strip())}\n")
-        if problem and not problem.strip().startswith("(") and not problem.strip().startswith(";"):
-            f.write(f"; Problem: {os.path.basename(problem.strip())}\n")
-        if solve_time is not None:
-            f.write(f"; Solve time: {solve_time}s\n")
-        f.write(f"; Plan length: {len(plan)} actions\n")
-        f.write("\n")
-        for action in plan:
-            f.write(str(action) + "\n")
-
-    host_path = _container_to_host(filepath)
-    return {
-        "file_path": host_path,
-        "container_path": filepath,
-        "plan_length": len(plan),
-    }
-
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def validate_pddl_syntax(

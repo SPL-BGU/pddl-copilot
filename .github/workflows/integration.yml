@@ -25,7 +25,7 @@ jobs:
         run: bash tests/static_checks.sh
 
   plugin-tests:
-    name: Plugin Integration Tests
+    name: Plugin Integration Tests (Docker)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: static-checks
@@ -46,9 +46,6 @@ jobs:
 
       - name: Pull Docker image
         run: docker pull ${{ env.IMAGE }}
-
-      - name: Test pddl-solver
-        run: bash plugins/pddl-solver/tests/verify.sh ${{ env.IMAGE }}
 
       - name: Test pddl-validator
         run: bash plugins/pddl-validator/tests/verify.sh ${{ env.IMAGE }}
@@ -92,3 +89,26 @@ jobs:
 
       - name: Test pddl-parser
         run: bash plugins/pddl-parser/tests/verify.sh
+
+  pddl-solver-tests:
+    name: pddl-solver Tests (Tier 1)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: static-checks
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Test pddl-solver
+        run: bash plugins/pddl-solver/tests/verify.sh

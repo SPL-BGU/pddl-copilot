@@ -1,27 +1,43 @@
 #!/usr/bin/env bash
-# verify.sh — Smoke-test the pddl-solver plugin against the pddl-sandbox image.
+# verify.sh — Smoke-test the pddl-solver plugin (Tier 1, no Docker).
 set -euo pipefail
-IMAGE="${1:-ghcr.io/spl-bgu/pddl-sandbox:latest}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-SERVER_SCRIPT="$PLUGIN_ROOT/server/solver_server.py"
-GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
+VENV_DIR="$PLUGIN_ROOT/.venv"
 
+GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 FAILURES=0
 
 ERRLOG=$(mktemp)
 trap 'rm -f "$ERRLOG"' EXIT
 
 echo "Testing pddl-solver plugin"
-echo "Image: $IMAGE"
-echo "Server: $SERVER_SCRIPT"
+echo "Server: $PLUGIN_ROOT/server/solver_server.py"
 echo ""
 
-# -- Write test PDDL inside the container --
-SETUP='
-mkdir -p /tmp/test
-cat > /tmp/test/domain.pddl <<DOMAIN
-(define (domain bw)
+# Ensure venv exists
+if [ ! -d "$VENV_DIR" ]; then
+    echo "Setting up venv..."
+    if command -v uv &>/dev/null; then
+        uv venv "$VENV_DIR"
+        uv pip install --python "$VENV_DIR/bin/python3" -r "$PLUGIN_ROOT/requirements.txt"
+    else
+        python3 -m venv "$VENV_DIR"
+        "$VENV_DIR/bin/pip" install --quiet -r "$PLUGIN_ROOT/requirements.txt"
+    fi
+fi
+
+PYTHON="$VENV_DIR/bin/python3"
+
+# -- Test script --
+read -r -d '' TEST_SCRIPT << 'PYEOF' || true
+import sys, os, json, tempfile, shutil
+
+sys.path.insert(0, os.path.join(sys.argv[1], "server"))
+from solver_server import classic_planner, numeric_planner, save_plan
+
+DOMAIN = """(define (domain bw)
   (:predicates (on ?x ?y) (ontable ?x) (clear ?x) (handempty) (holding ?x))
   (:action pick-up :parameters (?x)
     :precondition (and (clear ?x) (ontable ?x) (handempty))
@@ -34,89 +50,123 @@ cat > /tmp/test/domain.pddl <<DOMAIN
     :effect (and (holding ?x) (clear ?y) (not (on ?x ?y)) (not (clear ?x)) (not (handempty))))
   (:action put-down :parameters (?x)
     :precondition (holding ?x)
-    :effect (and (ontable ?x) (clear ?x) (handempty) (not (holding ?x)))))
-DOMAIN
+    :effect (and (ontable ?x) (clear ?x) (handempty) (not (holding ?x)))))"""
 
-cat > /tmp/test/problem.pddl <<PROBLEM
-(define (problem bw1) (:domain bw)
+PROBLEM = """(define (problem bw1) (:domain bw)
   (:objects a b)
   (:init (ontable a) (ontable b) (clear a) (clear b) (handempty))
-  (:goal (on a b)))
-PROBLEM
-'
+  (:goal (on a b)))"""
 
-MOUNT_SERVER="-v ${SERVER_SCRIPT}:/opt/server/pddl_server.py:ro"
+NUMERIC_DOMAIN = """(define (domain counter)
+  (:requirements :numeric-fluents)
+  (:functions (count))
+  (:action increment
+    :parameters ()
+    :precondition ()
+    :effect (increase (count) 1)))"""
 
-# 1. Test server imports
-echo -n "Server imports...         "
-if docker run --rm $MOUNT_SERVER "$IMAGE" python3 -c "
-from pddl_server import classic_planner, numeric_planner, save_plan
-print('OK')
-" 2>"$ERRLOG" | grep -q "OK"; then
-    echo -e "${GREEN}OK${NC}"
-else
-    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
+NUMERIC_PROBLEM = """(define (problem count-to-3) (:domain counter)
+  (:init (= (count) 0))
+  (:goal (>= (count) 3)))"""
+
+passed = 0
+failed = 0
+
+def test(name, fn):
+    global passed, failed
+    try:
+        fn()
+        print(f"  OK  {name}")
+        passed += 1
+    except Exception as e:
+        print(f"  FAIL {name}: {e}")
+        failed += 1
+
+# ---- Tests ----
+
+def test_imports():
+    from solver_server import classic_planner, numeric_planner, save_plan
+test("Server imports", test_imports)
+
+def test_classic():
+    result = classic_planner(DOMAIN, PROBLEM)
+    assert "error" not in result, f"Error: {result.get('message', result)}"
+    assert len(result["plan"]) > 0, "Expected non-empty plan"
+    assert result["solve_time"] >= 0
+    # Verify plan format: actions should be parenthesized
+    for a in result["plan"]:
+        assert a.startswith("("), f"Action not in PDDL format: {a}"
+test("classic_planner (blocksworld)", test_classic)
+
+def test_classic_strategies():
+    for strategy in ["lazy_greedy_cea", "astar_lmcut", "lazy_greedy_ff"]:
+        result = classic_planner(DOMAIN, PROBLEM, strategy=strategy)
+        assert "error" not in result, f"Strategy {strategy} error: {result.get('message', result)}"
+        assert len(result["plan"]) > 0, f"Strategy {strategy}: empty plan"
+test("classic_planner (all strategies)", test_classic_strategies)
+
+def test_numeric():
+    result = numeric_planner(NUMERIC_DOMAIN, NUMERIC_PROBLEM)
+    assert "error" not in result, f"Error: {result.get('message', result)}"
+    assert len(result["plan"]) > 0, "Expected non-empty plan"
+    assert result["solve_time"] >= 0
+test("numeric_planner (counter)", test_numeric)
+
+def test_save():
+    tmp = tempfile.mkdtemp()
+    try:
+        result = save_plan(
+            ["(pick-up a)", "(stack a b)"],
+            name="test", output_dir=tmp, solve_time=0.5,
+        )
+        assert os.path.isfile(result["file_path"]), f"File not found: {result['file_path']}"
+        assert result["plan_length"] == 2
+        with open(result["file_path"]) as f:
+            content = f.read()
+        assert "; Plan generated at" in content
+        assert "; Solve time: 0.5s" in content
+        assert "; Plan length: 2 actions" in content
+        assert "(pick-up a)" in content
+    finally:
+        shutil.rmtree(tmp)
+test("save_plan (metadata)", test_save)
+
+def test_save_anti_overwrite():
+    tmp = tempfile.mkdtemp()
+    try:
+        r1 = save_plan(["(pick-up a)"], name="dup", output_dir=tmp)
+        r2 = save_plan(["(stack a b)"], name="dup", output_dir=tmp)
+        assert r1["file_path"] != r2["file_path"], "Should not overwrite"
+        assert "_1.solution" in r2["file_path"], f"Expected counter: {r2['file_path']}"
+    finally:
+        shutil.rmtree(tmp)
+test("save_plan (anti-overwrite)", test_save_anti_overwrite)
+
+def test_invalid_strategy():
+    result = classic_planner(DOMAIN, PROBLEM, strategy="nonexistent")
+    assert result.get("error") is True
+test("classic_planner (invalid strategy)", test_invalid_strategy)
+
+def test_bad_pddl():
+    result = classic_planner("(define (domain broken))", PROBLEM)
+    assert result.get("error") is True
+test("classic_planner (malformed PDDL)", test_bad_pddl)
+
+# ---- Summary ----
+print(f"\n{passed + failed} tests: {passed} passed, {failed} failed")
+if failed:
+    sys.exit(1)
+PYEOF
+
+$PYTHON -c "$TEST_SCRIPT" "$PLUGIN_ROOT" 2>"$ERRLOG"
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -ne 0 ]; then
+    echo ""
+    echo -e "${RED}Tests failed.${NC}"
     cat "$ERRLOG" >&2
-fi
-
-# 2. Fast Downward via classic_planner
-echo -n "classic_planner...        "
-if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "$SETUP
-python3 -c \"
-from pddl_server import classic_planner
-result = classic_planner('/tmp/test/domain.pddl', '/tmp/test/problem.pddl')
-plan = result['plan']
-t = result['solve_time']
-print(f'Plan: {len(plan)} actions in {t:.2f}s')
-for a in plan: print(a)
-\"" 2>"$ERRLOG" | grep -Eqi "pick-up|stack|actions"; then
-    echo -e "${GREEN}OK${NC}"
-else
-    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
-    cat "$ERRLOG" >&2
-fi
-
-# 3. save_plan (metadata + default dir)
-echo -n "save_plan...              "
-if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "
-python3 -c \"
-from pddl_server import save_plan
-result = save_plan(['(pick-up a)', '(stack a b)'], name='test', solve_time=0.5)
-assert '/plans/plan_test.solution' in result['container_path'], f'Unexpected path: {result}'
-with open(result['container_path']) as f:
-    content = f.read()
-assert '; Plan generated at' in content
-assert '; Solve time: 0.5s' in content
-assert '; Plan length: 2 actions' in content
-assert '(pick-up a)' in content
-print('OK')
-\"" 2>"$ERRLOG" | grep -q "OK"; then
-    echo -e "${GREEN}OK${NC}"
-else
-    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
-    cat "$ERRLOG" >&2
-fi
-
-# 4. save_plan (anti-overwrite)
-echo -n "save_plan anti-overwrite.. "
-if docker run --rm $MOUNT_SERVER "$IMAGE" bash -c "
-python3 -c \"
-from pddl_server import save_plan
-r1 = save_plan(['(pick-up a)'], name='dup')
-r2 = save_plan(['(stack a b)'], name='dup')
-assert r1['container_path'] != r2['container_path'], 'Should not overwrite'
-assert '_1.solution' in r2['container_path'], f'Expected counter: {r2}'
-print('OK')
-\"" 2>"$ERRLOG" | grep -q "OK"; then
-    echo -e "${GREEN}OK${NC}"
-else
-    echo -e "${RED}FAILED${NC}"; FAILURES=$((FAILURES + 1))
-    cat "$ERRLOG" >&2
+    exit 1
 fi
 
 echo ""
-if [ "$FAILURES" -gt 0 ]; then
-    echo -e "${RED}${FAILURES} test(s) failed.${NC}"
-    exit 1
-fi
-echo "All tests passed."
+echo -e "${GREEN}All tests passed.${NC}"

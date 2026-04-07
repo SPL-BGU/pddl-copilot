@@ -74,7 +74,7 @@ COPY solvers_server_wrapper.py /opt/server/pddl_server.py
 ENV PYTHONPATH="/opt/server"
 
 # --- Verify import works ---
-RUN python3 -c "from pddl_server import classic_planner, numeric_planner, validate_pddl_syntax; print('MCP tools import OK')"
+RUN python3 -c "from pddl_server import validate_pddl_syntax, get_state_transition; print('MCP tools import OK')"
 
 WORKDIR /workspace
 

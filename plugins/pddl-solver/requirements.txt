@@ -1,0 +1,6 @@
+mcp
+pydantic
+unified-planning
+up-fast-downward
+up-enhsp
+setuptools<81
