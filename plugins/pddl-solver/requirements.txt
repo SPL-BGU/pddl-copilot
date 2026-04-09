@@ -3,4 +3,6 @@ pydantic
 unified-planning
 up-fast-downward
 up-enhsp
+# unified-planning / up-enhsp metadata requires setuptools < 81
+# (setuptools 81+ changed pkg_resources behavior, causing import errors)
 setuptools<81
