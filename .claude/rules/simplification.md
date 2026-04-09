@@ -14,4 +14,4 @@ Before writing or modifying code, verify:
 4. **One consumer rule**: Do not create abstractions (base classes, utility modules, shared libraries) with only one consumer. Inline until 2+ plugins need it.
 5. **File count check**: If your change creates new files at the repository root, reconsider. New files should go inside the relevant `plugins/<name>/` directory or in `.claude/` for dev tooling.
 6. **Script reuse**: Before writing a new shell script, check if existing patterns already handle the use case. Adapt existing scripts rather than creating new ones.
-7. **Simplest architecture tier**: Default to Tier 1 (pure Python/Node, no Docker). Only use Docker (Tier 3) when the plugin wraps compiled binaries with no native alternative. Do not copy Docker patterns from `pddl-solver`/`pddl-validator` into plugins that don't need them.
+7. **Simplest architecture tier**: Default to Tier 1 (pure Python/Node with pip/npm deps). All current plugins are Tier 1. Use `plugins/pddl-solver/` as the reference for launch scripts, MCP servers, and verify scripts.

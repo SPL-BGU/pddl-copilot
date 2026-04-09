@@ -31,13 +31,13 @@ The installer resolves absolute paths from wherever you cloned, so it works rega
 ## Smoke Test
 
 ```bash
-# Static checks (no Docker)
+# Static checks
 bash tests/static_checks.sh
 
-# Plugin tests (Docker required)
+# Plugin tests
 bash plugins/pddl-solver/tests/verify.sh
 bash plugins/pddl-validator/tests/verify.sh
 
-# MCP protocol test (Docker required)
+# MCP protocol test
 bash tests/mcp_protocol_test.sh
 ```

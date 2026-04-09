@@ -35,17 +35,16 @@ When studying external plugins and open-source examples:
 - **Note the context**: A pattern that makes sense for a large multi-tool plugin may be overkill for a simple single-tool plugin
 
 ### 4. Recommend the simplest architecture that works
-**Docker is a last resort.** Most plugins do NOT need Docker. Only recommend Docker when the plugin wraps pre-compiled binaries that cannot be installed via package managers or run natively.
+All current plugins are Tier 1 (pip-installable). Always prefer the simplest tier that works.
 
 **Architecture tiers (always prefer the simplest that works):**
 
 | Tier | When to use | Launch pattern |
 |------|------------|----------------|
-| **1. Pure script** | Python/Node MCP server with pip/npm deps only | `exec python3 server.py` or `exec node server.js` |
+| **1. Pure script** (preferred) | Python/Node MCP server with pip/npm deps only | venv + `exec python3 server.py` |
 | **2. System deps** | Wraps tools installable via brew/apt/cargo | Check deps → install if missing → `exec` server |
-| **3. Docker** | Wraps binaries that must be compiled from source, or need isolated environments with no native alternative | Docker pull/build → `exec docker run` |
 
-The existing `plugins/pddl-solver/` and `plugins/pddl-validator/` are **Tier 3** plugins because Fast Downward, Metric-FF, and VAL are C++ binaries requiring compilation. This is the exception — most plugins should be Tier 1 or 2.
+The existing `plugins/pddl-solver/` and `plugins/pddl-validator/` are **Tier 1** plugins. They use unified-planning and pyvalidator respectively, with all dependencies pip-installable into a venv.
 
 ### 5. Use our local plugins as reference — with context
 `plugins/pddl-solver/` is a solid reference for:
@@ -53,10 +52,7 @@ The existing `plugins/pddl-solver/` and `plugins/pddl-validator/` are **Tier 3**
 - Skill prompting patterns (mandatory rules, activation triggers, error handling guidance)
 - MCP server tool design (parameter patterns, return formats, error dicts)
 
-It is NOT a good template for:
-- Docker/containerization (only applies to Tier 3)
-- Path translation (`HOST_PWD`, container mounts — Docker-specific)
-- Launch script complexity (simpler plugins need simpler launchers)
+The launch script structure is consistent across all plugins (venv + exec). Adapt the server path and `requirements.txt` for your plugin.
 
 ### 6. Do NOT duplicate the simplifier's job
 Your role is **research and architecture**. You do not review for:

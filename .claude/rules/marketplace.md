@@ -12,7 +12,7 @@ paths:
 ### Plugin isolation (CRITICAL)
 1. **Self-contained plugins**: Each plugin under `plugins/<name>/` must be fully self-contained. It must work when installed standalone via `claude plugin add`.
 2. **No cross-plugin imports**: Plugin A must never reference files from Plugin B. No shared code between plugins.
-3. **Independent infrastructure**: Each plugin manages its own dependencies, servers, and build artifacts independently. No shared MCP servers, no shared containers.
+3. **Independent infrastructure**: Each plugin manages its own dependencies, servers, and build artifacts independently. No shared MCP servers.
 4. **No shared MCP servers**: Each plugin declares its own MCP servers in its own `.mcp.json`.
 5. **Independent versioning**: Each plugin has its own version in its marketplace entry. Plugins do not share version numbers.
 

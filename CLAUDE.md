@@ -45,7 +45,7 @@ Full guide: [docs/contributing.md](docs/contributing.md#creating-a-new-plugin)
 
 - `.claude/rules/simplification.md` — Global simplification principle (minimal changes, no duplication, proportional complexity)
 - `.claude/rules/marketplace.md` — Plugin isolation, naming conventions, scope boundaries
-- `.claude/rules/plugin-development.md` — Docker, MCP server, skill, and verification conventions
+- `.claude/rules/plugin-development.md` — MCP server, skill, and verification conventions
 
 ## Code Conventions
 
