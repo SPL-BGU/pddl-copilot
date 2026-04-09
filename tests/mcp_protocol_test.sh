@@ -4,7 +4,6 @@
 # that direct Python imports would miss.
 set -euo pipefail
 
-IMAGE="${1:-ghcr.io/spl-bgu/pddl-sandbox:latest}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 FAILURES=0
@@ -78,43 +77,31 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test pddl-validator (Tier 3, Docker)
+# Test pddl-validator (Tier 1, native)
 # ---------------------------------------------------------------------------
 
 echo ""
-echo "--- pddl-validator (Docker) ---"
+echo "--- pddl-validator (Tier 1) ---"
+VALIDATOR_DIR="$REPO_ROOT/plugins/pddl-validator"
+VALIDATOR_VENV="$VALIDATOR_DIR/.venv"
 
-# Docker-specific MCP list script (uses /opt/server path inside container)
-DOCKER_MCP_LIST_SCRIPT='
-import asyncio
-import sys
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+# Ensure venv exists
+if [ ! -d "$VALIDATOR_VENV" ]; then
+    echo "  Setting up validator venv..."
+    if command -v uv &>/dev/null; then
+        uv venv "$VALIDATOR_VENV"
+        uv pip install --python "$VALIDATOR_VENV/bin/python3" -r "$VALIDATOR_DIR/requirements.txt"
+    else
+        python3 -m venv "$VALIDATOR_VENV"
+        "$VALIDATOR_VENV/bin/pip" install --quiet -r "$VALIDATOR_DIR/requirements.txt"
+    fi
+fi
 
-async def main():
-    expected = set(sys.argv[1].split(","))
-    params = StdioServerParameters(command="python3", args=["/opt/server/pddl_server.py"])
-    async with stdio_client(params) as (read, write):
-        async with ClientSession(read, write) as session:
-            await session.initialize()
-            result = await session.list_tools()
-            registered = {t.name for t in result.tools}
-            print(f"Registered: {sorted(registered)}")
-            missing = expected - registered
-            if missing:
-                print(f"MISSING: {sorted(missing)}", file=sys.stderr)
-                sys.exit(1)
-            print("ALL_TOOLS_OK")
-
-asyncio.run(main())
-'
-
-VALIDATOR_SERVER="$REPO_ROOT/plugins/pddl-validator/server/validator_server.py"
+VALIDATOR_PYTHON="$VALIDATOR_VENV/bin/python3"
 echo -n "  MCP tools/list...       "
-if docker run --rm \
-    -v "${VALIDATOR_SERVER}:/opt/server/pddl_server.py:ro" \
-    "$IMAGE" \
-    python3 -c "$DOCKER_MCP_LIST_SCRIPT" "validate_pddl_syntax,get_state_transition" \
+if $VALIDATOR_PYTHON -c "$MCP_LIST_SCRIPT" \
+    "validate_pddl_syntax,get_state_transition" \
+    "$VALIDATOR_PYTHON" "$VALIDATOR_DIR/server/validator_server.py" \
     2>"$ERRLOG" | grep -q "ALL_TOOLS_OK"; then
     pass "all 2 tools registered"
 else

@@ -25,17 +25,17 @@
     },
     {
       "name": "pddl-validator",
-      "description": "Validate PDDL domains, problems, and plans — check syntax, verify plan correctness, and inspect state transitions. Runs in Docker.",
+      "description": "Validate PDDL domains, problems, and plans — check syntax, verify plan correctness, and inspect state transitions. Pure pip install, no Docker.",
       "author": {
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "1.2.0",
+      "version": "2.0.0",
       "source": "./plugins/pddl-validator",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
-      "keywords": ["pddl", "validation", "val", "state-transition"]
+      "keywords": ["pddl", "validation", "pyvalidator", "state-transition"]
     },
     {
       "name": "pddl-parser",

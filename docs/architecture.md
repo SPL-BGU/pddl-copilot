@@ -86,17 +86,9 @@ See `plugins/pddl-solver/scripts/launch-server.sh` for the reference implementat
 3. **Minimal runtime**: Install only what the MCP server needs (`pip install mcp` or equivalent).
 4. **Verify imports**: Add `RUN python3 -c "from <module> import ..."` to catch import errors at build time.
 
-### GHCR publishing
-
-- Images go to `ghcr.io/<org>/<image-name>:latest`
-- The GHCR package must have **public visibility** (repo Settings → Packages → pddl-sandbox → Change visibility) for `docker pull` to work without auth
-- Content-hash versioning: local builds hash the Dockerfile + server wrapper to create version tags, avoiding unnecessary rebuilds
-
 ### CI/CD
 
-**Docker image publishing** (`docker-publish.yml`): After pushing changes to `docker/Dockerfile` or `docker/solvers_server_wrapper.py`, GitHub Actions builds and pushes a new multi-arch image to `ghcr.io/spl-bgu/pddl-sandbox:latest`. Users get the updated image on their next session.
-
-**Integration tests** (`integration.yml`): Runs on every PR targeting `main`. See [contributing.md](contributing.md#verification) for the full test suite.
+**Integration tests** (`integration.yml`): Runs on every PR targeting `main`. Tests all plugins natively (no Docker). See [contributing.md](contributing.md#verification) for the full test suite.
 
 ## Skill Conventions
 

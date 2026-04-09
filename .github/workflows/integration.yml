@@ -6,9 +6,6 @@ on:
   push:
     branches: [main]
 
-env:
-  IMAGE: ghcr.io/spl-bgu/pddl-sandbox:latest
-
 jobs:
   static-checks:
     name: Static Checks
@@ -24,13 +21,11 @@ jobs:
       - name: Run static checks
         run: bash tests/static_checks.sh
 
-  plugin-tests:
-    name: Plugin Integration Tests (Docker)
+  pddl-validator-tests:
+    name: pddl-validator Tests (Tier 1)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     needs: static-checks
-    permissions:
-      packages: read
     steps:
       - uses: actions/checkout@v4
 
@@ -38,39 +33,29 @@ jobs:
         with:
           python-version: "3.11"
 
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull Docker image
-        run: docker pull ${{ env.IMAGE }}
+      - name: Install uv
+        run: pip install uv
 
       - name: Test pddl-validator
-        run: bash plugins/pddl-validator/tests/verify.sh ${{ env.IMAGE }}
+        run: bash plugins/pddl-validator/tests/verify.sh
 
   mcp-protocol:
     name: MCP Protocol Smoke Tests
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     needs: static-checks
-    permissions:
-      packages: read
     steps:
       - uses: actions/checkout@v4
 
-      - uses: docker/login-action@v3
+      - uses: actions/setup-python@v5
         with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          python-version: "3.11"
 
-      - name: Pull Docker image
-        run: docker pull ${{ env.IMAGE }}
+      - name: Install uv
+        run: pip install uv
 
       - name: MCP tools/list validation
-        run: bash tests/mcp_protocol_test.sh ${{ env.IMAGE }}
+        run: bash tests/mcp_protocol_test.sh
 
   pddl-parser-tests:
     name: pddl-parser Tests (Tier 1)

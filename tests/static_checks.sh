@@ -132,16 +132,6 @@ for server_py in "$REPO_ROOT"/plugins/*/server/*.py; do
         cat "$ERRLOG" >&2
     fi
 done
-# Also check the Docker wrapper
-wrapper="$REPO_ROOT/docker/solvers_server_wrapper.py"
-if [ -f "$wrapper" ]; then
-    if python3 -m py_compile "$wrapper" 2>"$ERRLOG"; then
-        pass "docker/solvers_server_wrapper.py"
-    else
-        fail "docker/solvers_server_wrapper.py — syntax error"
-        cat "$ERRLOG" >&2
-    fi
-fi
 
 # ---------------------------------------------------------------------------
 # 6. settings.json tool names match server @mcp.tool functions

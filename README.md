@@ -6,13 +6,14 @@ A Claude Code plugin marketplace for PDDL planning and validation tools.
 
 | Plugin | Description |
 |--------|-------------|
-| [pddl-solver](plugins/pddl-solver/) | Compute plans using Fast Downward (classical) and Metric-FF (numeric) in Docker |
-| [pddl-validator](plugins/pddl-validator/) | Validate PDDL syntax, plans, and simulate state transitions using VAL in Docker |
-| [pddl-parser](plugins/pddl-parser/) | Parse PDDL domains/problems and generate structured trajectories (pure Python, no Docker) |
+| [pddl-solver](plugins/pddl-solver/) | Compute plans using Fast Downward (classical) and ENHSP (numeric) via unified-planning. Pure pip, no Docker. |
+| [pddl-validator](plugins/pddl-validator/) | Validate PDDL syntax, plans, and simulate state transitions using pyvalidator. Pure pip, no Docker. |
+| [pddl-parser](plugins/pddl-parser/) | Parse PDDL domains/problems and generate structured trajectories. Pure pip, no Docker. |
 
 ## Prerequisites
 
-- [Docker](https://docker.com) must be installed and running (required for `pddl-solver` and `pddl-validator`; `pddl-parser` is pure Python and does not require Docker)
+- Python 3.10+ (all plugins are pure pip, no Docker required)
+- Java 17+ (only needed for numeric planning via ENHSP in pddl-solver)
 
 ## Installation
 
@@ -59,9 +60,9 @@ A Claude Code plugin marketplace for PDDL planning and validation tools.
    │  Marketplace Search                              │
    ├─────────────────────────────────────────────────┤
    │  ▸ pddl-solver                                   │
-   │    PDDL planning with Fast Downward & Metric-FF  │
+   │    PDDL planning with Fast Downward & ENHSP      │
    │    pddl-validator                                │
-   │    PDDL validation with VAL                      │
+   │    PDDL validation with pyvalidator              │
    │    pddl-parser                                   │
    │    PDDL parsing and structured trajectories      │
    └─────────────────────────────────────────────────┘
@@ -158,7 +159,7 @@ python3 ollama_mcp_bridge.py --model qwen3:4b --plugins pddl-solver,pddl-validat
 
 - [Ollama](https://ollama.com) installed and running (`ollama serve`)
 - A model with tool-calling support (e.g., `llama3.1`, `qwen3`, `mistral`)
-- Docker (for plugins that require it)
+- Python 3.10+
 
 ## Adding a New Plugin
 
@@ -179,9 +180,6 @@ pddl-copilot/
 │   ├── contributing.md        # How to contribute and create plugins
 │   ├── cross-platform-setup.md # macOS, Linux, Windows (WSL2) setup
 │   └── branch-testing.md     # Testing branches on other machines
-├── docker/
-│   ├── Dockerfile             # Shared Docker image (FD, MFF, VAL)
-│   └── solvers_server_wrapper.py
 ├── plugins/
 │   ├── pddl-solver/           # Planning plugin
 │   │   ├── .mcp.json
@@ -208,10 +206,9 @@ pddl-copilot/
 │       ├── scripts/launch-server.sh
 │       └── tests/verify.sh
 ├── tests/
-│   ├── static_checks.sh       # Config & structure validation (no Docker)
+│   ├── static_checks.sh       # Config & structure validation
 │   └── mcp_protocol_test.sh   # MCP stdio protocol smoke tests
 ├── .github/workflows/
-│   ├── docker-publish.yml     # Multi-arch Docker image build & push
 │   └── integration.yml        # PR gate: static checks + plugin tests + MCP protocol
 ├── install_marketplace.sh     # Unified Cursor/Antigravity installer
 ├── CLAUDE.md                  # Marketplace-level instructions
