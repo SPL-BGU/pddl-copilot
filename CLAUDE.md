@@ -7,15 +7,13 @@ This repository is a Claude Code plugin marketplace. Each plugin lives in its ow
 - `.claude-plugin/marketplace.json` — marketplace catalog listing all available plugins
 - `.claude-plugin/plugin.json` — marketplace-level metadata
 - `plugins/<plugin-name>/` — each plugin with its own `CLAUDE.md`, `.mcp.json`, skills, scripts, etc.
-- `docker/` — shared Docker image build (Dockerfile for Fast Downward, Metric-FF, VAL)
-  - **`solvers_server_wrapper.py`** is baked into the Docker image but **overridden at runtime** by each plugin's own server script (volume-mounted). Modifying the wrapper triggers a Docker image rebuild + GHCR re-push via CI. Only update it when intentionally changing the baked-in fallback — prefer editing the plugin servers (`plugins/<name>/server/`) for MCP-facing changes.
 - `install_marketplace.sh` — unified Cursor/Antigravity installer (auto-discovers all plugins)
 
 ## Available Plugins
 
-- **pddl-solver** (`plugins/pddl-solver/`) — PDDL planning using Fast Downward and Metric-FF in Docker
-- **pddl-validator** (`plugins/pddl-validator/`) — PDDL validation and state transition simulation using VAL in Docker
-- **pddl-parser** (`plugins/pddl-parser/`) — PDDL parsing and structured trajectory generation with dual-backend support: pddl-plus-parser (default) and unified-planning (pure Python, no Docker)
+- **pddl-solver** (`plugins/pddl-solver/`) — PDDL planning using Fast Downward (via up-fast-downward) and ENHSP (via up-enhsp). Pure pip, no Docker.
+- **pddl-validator** (`plugins/pddl-validator/`) — PDDL validation and state transition simulation using pyvalidator. Pure pip, no Docker.
+- **pddl-parser** (`plugins/pddl-parser/`) — PDDL parsing and structured trajectory generation with dual-backend support: pddl-plus-parser (default) and unified-planning. Pure pip, no Docker.
 
 ## Ollama MCP Bridge
 
@@ -47,7 +45,7 @@ Full guide: [docs/contributing.md](docs/contributing.md#creating-a-new-plugin)
 
 - `.claude/rules/simplification.md` — Global simplification principle (minimal changes, no duplication, proportional complexity)
 - `.claude/rules/marketplace.md` — Plugin isolation, naming conventions, scope boundaries
-- `.claude/rules/plugin-development.md` — Docker, MCP server, skill, and verification conventions
+- `.claude/rules/plugin-development.md` — MCP server, skill, and verification conventions
 
 ## Code Conventions
 

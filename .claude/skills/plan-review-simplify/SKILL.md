@@ -16,14 +16,13 @@ For the task described in $ARGUMENTS:
    - `plugins/pddl-solver/server/solver_server.py` for MCP server patterns
    - Other plugins under `plugins/` for architecture patterns
 3. Check all plugins under `plugins/` to understand cross-plugin impact
-4. **If the affected plugin uses Docker (Tier 3)**: Run `docker-verifier` agent to verify baseline state
 
 ### Phase 2: Plan
 Design the implementation approach covering:
 - **Objective**: One sentence describing the goal
 - **Analysis**: Current state, what needs to change, existing code to reuse
 - **Scope classification**: Which files are marketplace-level vs plugin-scoped?
-- **Architecture tier**: Which tier does this plugin use (Tier 1: pure script, Tier 2: system deps, Tier 3: Docker)? Is Docker justified? Could a simpler tier work?
+- **Architecture tier**: Confirm the plugin uses the simplest tier that works (Tier 1: pip/npm, Tier 2: system deps).
 - **Plugin impact**: Which plugins are affected? Does this maintain isolation?
 - **Files to modify**: Table of file | action (create/modify/delete) | description
 - **Execution steps**: Numbered checklist
@@ -45,7 +44,7 @@ Before presenting the plan, review it for simplification and correctness:
 - Does the change avoid modifying shared infrastructure (`.claude-plugin/`, `.github/`) unnecessarily?
 
 **Architecture appropriateness:**
-- Does the plugin use the simplest architecture tier that works? (Docker is a last resort for compiled binaries only)
+- Does the plugin use the simplest architecture tier that works? (Tier 1 preferred)
 - Does the MCP server follow FastMCP conventions?
 - Does the launch script match the plugin's tier?
 - Does the verify/test script cover all declared MCP tools?
@@ -56,13 +55,12 @@ If concerns found: revise the plan. Note what changed and why.
 Present plan to user, noting:
 - Open decisions requiring user input
 - Any plugin isolation trade-offs
-- Expected Docker build/test impact
 
 Do NOT proceed until approved.
 
 ### Phase 5: Execute
 Execute steps in order. After completion:
-1. Run the affected plugin's verify/test script (Tier 3: `tests/verify.sh`, Tier 1-2: the plugin's test script)
+1. Run the affected plugin's `tests/verify.sh`
 2. Run `shellcheck` on any new or modified `.sh` files (if shellcheck is available)
 3. Summarize changes, key decisions, validation results
 

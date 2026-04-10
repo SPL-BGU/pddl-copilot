@@ -1,7 +1,7 @@
 """
-pddl_server.py — MCP server wrapping VAL for PDDL validation and state transition simulation.
+pddl_server.py — MCP server for PDDL validation via pyvalidator.
 
-Calls VAL binary directly via subprocess inside a Docker container.
+Uses pyval.PDDLValidator for syntax checking, plan validation, and state simulation.
 Accepts inline PDDL content strings (starting with '(') or file paths.
 """
 
@@ -11,17 +11,16 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 import os
 import shutil
-import subprocess
 import uuid
+
+from pyval import PDDLValidator
 
 mcp = FastMCP("pddl-validator")
 
 # ---------------------------------------------------------------------------
 # Configuration (overridable via environment variables)
 # ---------------------------------------------------------------------------
-VAL_PATH = os.environ.get("PDDL_VAL_PATH", "/opt/planners/VAL")
 TEMP_DIR = os.environ.get("PDDL_TEMP_DIR", "/tmp/pddl")
-DEFAULT_TIMEOUT = int(os.environ.get("PDDL_TIMEOUT", "120"))
 
 os.makedirs(TEMP_DIR, exist_ok=True)
 
@@ -41,7 +40,7 @@ def _request_dir():
 
 
 def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
-    """Write PDDL content to a temp file, or translate host paths to container paths."""
+    """Write PDDL content to a temp file, or return the existing file path."""
     stripped = content_or_path.strip()
 
     # Inline PDDL content — write to temp file (may start with ; comments)
@@ -51,56 +50,19 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
             f.write(content_or_path)
         return path
 
-    # First, is it already a valid container path? 
+    # File path — resolve
     if os.path.isfile(stripped):
         return stripped
 
-    # Translate host absolute path → container path
-    host_pwd = os.environ.get("HOST_PWD", "")
-    if host_pwd and stripped.startswith(host_pwd):
-        translated = "/workspace/" + stripped[len(host_pwd):].lstrip("/")
-        if os.path.isfile(translated):
-            return translated
-
-    # Relative path — resolve against /workspace
-    if not os.path.isabs(stripped):
-        workspace_path = os.path.join("/workspace", stripped)
-        if os.path.isfile(workspace_path):
-            return workspace_path
+    # Try expanding ~ and relative paths
+    expanded = os.path.expanduser(stripped)
+    if os.path.isfile(expanded):
+        return expanded
 
     raise FileNotFoundError(
-        f"PDDL file not found. Path: '{stripped}'. "
-        f"Not found at '/workspace/...' either. "
-        f"HOST_PWD='{host_pwd}'. "
-        f"Ensure the file is inside the mounted directory, or pass inline PDDL content instead."
+        f"PDDL file not found: '{stripped}'. "
+        f"Pass inline PDDL content or a valid file path."
     )
-
-
-def _run(args: list[str], cwd: str = None, timeout: int = None) -> subprocess.CompletedProcess:
-    """Run a subprocess with argument list (no shell). Returns CompletedProcess."""
-    return subprocess.run(
-        args, cwd=cwd,
-        capture_output=True, text=True,
-        timeout=timeout or DEFAULT_TIMEOUT,
-    )
-
-
-# ---------------------------------------------------------------------------
-# VAL helper
-# ---------------------------------------------------------------------------
-
-def _run_val(domain_path: str, problem_path: str = None,
-             plan_path: str = None, verbose: bool = True) -> subprocess.CompletedProcess:
-    """Run VAL Validate with the given files."""
-    args = ["./Validate"]
-    if verbose:
-        args.append("-v")
-    args.extend(["-t", "0.1", domain_path])
-    if problem_path:
-        args.append(problem_path)
-    if plan_path:
-        args.append(plan_path)
-    return _run(args, cwd=VAL_PATH)
 
 
 # ---------------------------------------------------------------------------
@@ -113,11 +75,11 @@ def validate_pddl_syntax(
     problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem.")] = None,
     plan: Annotated[str, Field(description="Plan content string or absolute file path for the action sequence to validate.")] = None,
 ) -> dict:
-    """Validates PDDL domains, problems, and plans using the VAL validator.
+    """Validates PDDL domains, problems, and plans using pyvalidator.
     Checks syntax when given domain only, checks problem consistency when given domain+problem,
     and verifies plan correctness when given domain+problem+plan.
     Returns:
-        Success: {"retcode": int, "stdout": str, "stderr": str}
+        {"valid": bool, "status": str, "report": str, "details": dict}
         Error: {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
@@ -128,11 +90,20 @@ def validate_pddl_syntax(
             return {"error": True, "message": str(e)}
 
         try:
-            r = _run_val(dp, pp, plp)
-        except subprocess.TimeoutExpired:
-            return {"error": True, "message": f"VAL timed out after {DEFAULT_TIMEOUT}s"}
+            validator = PDDLValidator()
+            if plp and pp:
+                result = validator.validate(dp, pp, plp)
+            else:
+                result = validator.validate_syntax(dp, pp)
+        except Exception as e:
+            return {"error": True, "message": f"Validation error: {e}"}
 
-        return {"retcode": r.returncode, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
+        return {
+            "valid": result.is_valid,
+            "status": result.status,
+            "report": result.report(),
+            "details": result.to_json(),
+        }
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
@@ -144,7 +115,7 @@ def get_state_transition(
     """Simulates plan execution step-by-step and returns the state after each action.
     Use this to debug a plan or inspect intermediate states. For checking plan validity, use validate_pddl_syntax instead.
     Returns:
-        Success: {"retcode": int, "stdout": str, "stderr": str}
+        {"valid": bool, "report": str, "steps": list, "trajectory": list, "details": dict}
         Error: {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
@@ -155,11 +126,57 @@ def get_state_transition(
             return {"error": True, "message": str(e)}
 
         try:
-            r = _run_val(dp, pp, plp)
-        except subprocess.TimeoutExpired:
-            return {"error": True, "message": f"VAL timed out after {DEFAULT_TIMEOUT}s"}
+            validator = PDDLValidator()
+            result = validator.validate(dp, pp, plp)
+        except Exception as e:
+            return {"error": True, "message": f"Validation error: {e}"}
 
-        return {"retcode": r.returncode, "stdout": r.stdout.strip(), "stderr": r.stderr.strip()}
+        # Build step-by-step output
+        steps = []
+        for step in result.steps:
+            step_data = {
+                "index": step.index,
+                "action": step.action,
+                "status": step.status,
+            }
+            if step.status == "OK":
+                step_data["changes"] = {
+                    "boolean": step.boolean_changes,
+                    "numeric": {
+                        k: {"before": v.before, "after": v.after}
+                        for k, v in step.numeric_changes.items()
+                    },
+                }
+            else:
+                step_data["unsatisfied_preconditions"] = [
+                    {
+                        "expression": f.expression,
+                        "type": f.type,
+                        "current_values": f.current_values,
+                        "explanation": f.explanation,
+                        **({"deficit": f.deficit} if f.deficit is not None else {}),
+                    }
+                    for f in step.unsatisfied
+                ]
+            steps.append(step_data)
+
+        # Build trajectory
+        trajectory = []
+        for snap in result.trajectory:
+            trajectory.append({
+                "step": snap.step,
+                "action": snap.action,
+                "boolean_fluents": snap.boolean_fluents,
+                "numeric_fluents": snap.numeric_fluents,
+            })
+
+        return {
+            "valid": result.is_valid,
+            "report": result.report(verbose=True),
+            "steps": steps,
+            "trajectory": trajectory,
+            "details": result.to_json(),
+        }
 
 
 if __name__ == "__main__":

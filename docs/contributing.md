@@ -2,8 +2,8 @@
 
 ## Prerequisites
 
-- [Docker](https://docker.com) installed and running (required for Tier 3 plugins)
-- Python 3
+- Python 3.10+
+- Java 17+ (only for numeric planning with ENHSP, optional)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (for development skills and testing)
 - Git
 
@@ -30,9 +30,8 @@ Default to the simplest tier that works. See [Architecture Tiers](architecture.m
 
 | Tier | When to use | Example |
 |------|-------------|---------|
-| **Tier 1** (preferred) | Tool is pip/npm-installable | Python library wrapper, web API client |
+| **Tier 1** (preferred) | Tool is pip/npm-installable | pddl-solver, pddl-validator, pddl-parser |
 | **Tier 2** | Tool is brew/apt/cargo-installable | CLI tool wrapper |
-| **Tier 3** | Tool must be compiled from source | pddl-solver, pddl-validator (C++ binaries) |
 
 ### 2. Scaffold the plugin directory
 
@@ -72,7 +71,7 @@ Create `.mcp.json` using `${CLAUDE_PLUGIN_ROOT}` for portable paths:
 
 ### 4. Create the MCP server
 
-Follow the patterns in [MCP Server Patterns](architecture.md#mcp-server-patterns). Use `plugins/pddl-solver/server/solver_server.py` as a reference (noting it is Tier 3).
+Follow the patterns in [MCP Server Patterns](architecture.md#mcp-server-patterns). Use `plugins/pddl-solver/server/solver_server.py` as a reference.
 
 ### 5. Create the launch script
 
@@ -114,14 +113,14 @@ Add your plugin to the "Available Plugins" section in both `CLAUDE.md` and `READ
 Each plugin must have a test/verify script that exercises all declared MCP tools.
 
 ```bash
-# Plugin smoke tests (Docker required)
+# Plugin smoke tests
 bash plugins/<name>/tests/verify.sh
 
 # Static checks — JSON validity, marketplace consistency, Python syntax,
-# settings ↔ server tool alignment (no Docker)
+# settings ↔ server tool alignment
 bash tests/static_checks.sh
 
-# MCP protocol test — verifies tools/list via stdio transport (Docker required)
+# MCP protocol test — verifies tools/list via stdio transport
 bash tests/mcp_protocol_test.sh
 ```
 

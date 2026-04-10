@@ -17,18 +17,28 @@ Do NOT tell the user the PDDL is correct based on your own analysis alone.
 
 ### Available tools:
 
-- `validate_pddl_syntax(domain, problem?, plan?)` — VAL. Validates PDDL syntax and plans. Returns validation output.
-- `get_state_transition(domain, problem, plan)` — Returns VAL verbose output showing state transitions after plan execution.
+- `validate_pddl_syntax(domain, problem?, plan?)` — Validates PDDL syntax, problem consistency, and plan correctness. Returns `{"valid": bool, "status": str, "report": str, "details": dict}`.
+- `get_state_transition(domain, problem, plan)` — Simulates plan execution step-by-step. Returns `{"valid": bool, "report": str, "steps": list, "trajectory": list, "details": dict}`.
 
 ### These tools accept PDDL content strings OR file paths
 
 You can pass either:
 - **Inline PDDL content** directly as a string (e.g., the full `(define (domain ...) ...)` text)
-- **File paths** to existing `.pddl` files on disk (absolute host paths are translated to container paths automatically)
+- **File paths** to existing `.pddl` files on disk (absolute or relative paths)
 
-### If a tool returns "not found" or connection errors:
+### Response format
 
-Either Docker is not installed, or the image build failed. Tell the user:
-1. Make sure Docker is installed: https://docker.com
-2. Try manually: `docker build -t pddl-sandbox <repo_root>/docker/`
-3. Restart Claude Code
+Both tools return structured JSON with:
+- `valid` — boolean indicating plan/syntax validity
+- `status` — one of `VALID`, `INVALID`, `SYNTAX_ERROR`, `STRUCTURE_ERROR`
+- `report` — human-readable text summary
+- `details` — full structured validation result (phases, steps, precondition failures, numeric deficits)
+
+For invalid plans, `details` includes per-precondition failure diagnostics with current values and deficit amounts.
+
+### If a tool returns errors:
+
+Check that the PDDL content is well-formed. Common issues:
+1. Missing requirements declarations (e.g., `:numeric-fluents`)
+2. Undeclared types, predicates, or objects
+3. Parameter count mismatches

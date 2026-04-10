@@ -1,6 +1,6 @@
 ---
 name: simplify
-description: Review current plan or code changes for unnecessary complexity, plugin isolation violations, and convention deviations. Flags over-engineering, Docker antipatterns, MCP issues, and scope misplacement.
+description: Review current plan or code changes for unnecessary complexity, plugin isolation violations, and convention deviations. Flags over-engineering, MCP issues, and scope misplacement.
 context: fork
 agent: simplifier
 argument-hint: [description of what to review]

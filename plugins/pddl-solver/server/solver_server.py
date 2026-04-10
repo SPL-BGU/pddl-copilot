@@ -1,7 +1,7 @@
 """
-pddl_server.py — MCP server wrapping Fast Downward and Metric-FF for PDDL planning.
+pddl_server.py — MCP server for PDDL planning via unified-planning engines.
 
-Calls planner binaries directly via subprocess inside a Docker container.
+Uses up-fast-downward for classical planning and up-enhsp for numeric planning.
 Accepts inline PDDL content strings (starting with '(') or file paths.
 """
 
@@ -9,39 +9,32 @@ from contextlib import contextmanager
 from typing import Annotated, Literal
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
-import glob as globmod
 import os
 import shutil
-import subprocess
 import time
 import uuid
+
+from unified_planning.io import PDDLReader
+from unified_planning.shortcuts import OneshotPlanner
+import unified_planning.engines.results as up_results
 
 mcp = FastMCP("pddl-solver")
 
 # ---------------------------------------------------------------------------
 # Configuration (overridable via environment variables)
 # ---------------------------------------------------------------------------
-FD_PATH = os.environ.get("PDDL_FD_PATH", "/opt/planners/FastDownward")
-MFF_PATH = os.environ.get("PDDL_MFF_PATH", "/opt/planners/METRIC_FF")
 TEMP_DIR = os.environ.get("PDDL_TEMP_DIR", "/tmp/pddl")
 DEFAULT_TIMEOUT = int(os.environ.get("PDDL_TIMEOUT", "120"))
-DEFAULT_PLANS_DIR = "/workspace/plans"
+DEFAULT_PLANS_DIR = os.path.expanduser("~/plans")
 
 os.makedirs(TEMP_DIR, exist_ok=True)
 
-# Fast Downward search strategy presets
+# Fast Downward search strategy presets (UP parameter format)
+# No spaces — UP passes these as CLI args to FD, spaces cause argument splitting
 FD_STRATEGIES = {
-    "lazy_greedy_cea": [
-        "--evaluator", "hcea=cea()",
-        "--search", "lazy_greedy([hcea], preferred=[hcea])",
-    ],
-    "astar_lmcut": [
-        "--search", "astar(lmcut())",
-    ],
-    "lazy_greedy_ff": [
-        "--evaluator", "hff=ff()",
-        "--search", "lazy_greedy([hff], preferred=[hff])",
-    ],
+    "lazy_greedy_cea": "let(hcea,cea(),lazy_greedy([hcea],preferred=[hcea]))",
+    "astar_lmcut": "astar(lmcut())",
+    "lazy_greedy_ff": "let(hff,ff(),lazy_greedy([hff],preferred=[hff]))",
 }
 
 # ---------------------------------------------------------------------------
@@ -60,7 +53,7 @@ def _request_dir():
 
 
 def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
-    """Write PDDL content to a temp file, or translate host paths to container paths."""
+    """Write PDDL content to a temp file, or return the existing file path."""
     stripped = content_or_path.strip()
 
     # Inline PDDL content — write to temp file (may start with ; comments)
@@ -70,124 +63,90 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
             f.write(content_or_path)
         return path
 
-    # First, is it already a valid container path? 
+    # File path — resolve
     if os.path.isfile(stripped):
         return stripped
 
-    # Translate host absolute path → container path
-    host_pwd = os.environ.get("HOST_PWD", "")
-    if host_pwd and stripped.startswith(host_pwd):
-        translated = "/workspace/" + stripped[len(host_pwd):].lstrip("/")
-        if os.path.isfile(translated):
-            return translated
-
-    # Relative path — resolve against /workspace
-    if not os.path.isabs(stripped):
-        workspace_path = os.path.join("/workspace", stripped)
-        if os.path.isfile(workspace_path):
-            return workspace_path
+    # Try expanding ~ and relative paths
+    expanded = os.path.expanduser(stripped)
+    if os.path.isfile(expanded):
+        return expanded
 
     raise FileNotFoundError(
-        f"PDDL file not found. Path: '{stripped}'. "
-        f"Not found at '/workspace/...' either. "
-        f"HOST_PWD='{host_pwd}'. "
-        f"Ensure the file is inside the mounted directory, or pass inline PDDL content instead."
+        f"PDDL file not found: '{stripped}'. "
+        f"Pass inline PDDL content or a valid file path."
     )
 
 
-def _host_to_container(path: str) -> str:
-    """Translate a host absolute path to a container path, or return as-is."""
-    host_pwd = os.environ.get("HOST_PWD", "")
-    if host_pwd and path.startswith(host_pwd):
-        return "/workspace/" + path[len(host_pwd):].lstrip("/")
-    return path
+def _extract_plan(result) -> list[str]:
+    """Extract plan actions as lowercase PDDL strings from a UP PlanGenerationResult."""
+    if result.plan is None:
+        return []
+    actions = []
+    for ai in result.plan.actions:
+        name = ai.action.name
+        params = " ".join(str(p) for p in ai.actual_parameters)
+        action_str = f"({name} {params})" if params else f"({name})"
+        actions.append(action_str.lower())
+    return actions
 
 
-def _container_to_host(path: str) -> str:
-    """Translate a container /workspace path to the host equivalent."""
-    host_pwd = os.environ.get("HOST_PWD", "")
-    if host_pwd and path.startswith("/workspace"):
-        relative = path[len("/workspace"):].lstrip("/")
-        return os.path.join(host_pwd, relative) if relative else host_pwd
-    return path
+def _solve(engine_name: str, domain: str, problem: str,
+           params: dict = None) -> dict:
+    """Common solve logic for both planners."""
+    with _request_dir() as rd:
+        try:
+            dp = _ensure_file(domain, "domain.pddl", rd)
+            pp = _ensure_file(problem, "problem.pddl", rd)
+        except FileNotFoundError as e:
+            return {"error": True, "message": str(e)}
 
+        try:
+            reader = PDDLReader()
+            up_problem = reader.parse_problem(dp, pp)
+        except Exception as e:
+            return {"error": True, "message": f"PDDL parse error: {e}"}
 
-def _run(args: list[str], cwd: str = None, timeout: int = None) -> subprocess.CompletedProcess:
-    """Run a subprocess with argument list (no shell). Returns CompletedProcess."""
-    return subprocess.run(
-        args, cwd=cwd,
-        capture_output=True, text=True,
-        timeout=timeout or DEFAULT_TIMEOUT,
-    )
+        t1 = time.time()
+        try:
+            with OneshotPlanner(name=engine_name,
+                                params=params or {}) as planner:
+                result = planner.solve(up_problem, timeout=DEFAULT_TIMEOUT)
+        except Exception as e:
+            return {"error": True, "message": f"Planner error: {e}"}
+        t2 = time.time()
+        solve_time = round(t2 - t1, 3)
 
+        if result.status in up_results.POSITIVE_OUTCOMES:
+            plan = _extract_plan(result)
+            return {"plan": plan, "solve_time": solve_time}
 
-# ---------------------------------------------------------------------------
-# Fast Downward helpers
-# ---------------------------------------------------------------------------
+        status = result.status
+        log = str(result.log_messages) if result.log_messages else ""
 
-def _clean_fd_artifacts():
-    """Remove Fast Downward temporary files between runs."""
-    for name in ("output.sas", "output"):
-        p = os.path.join(FD_PATH, name)
-        if os.path.isfile(p):
-            os.remove(p)
-    # Also clean numbered plan files
-    for p in globmod.glob(os.path.join(FD_PATH, "sas_plan*")):
-        os.remove(p)
+        if status in (
+            up_results.PlanGenerationResultStatus.UNSOLVABLE_PROVEN,
+            up_results.PlanGenerationResultStatus.UNSOLVABLE_INCOMPLETELY,
+        ):
+            return {"plan": [], "solve_time": solve_time,
+                    "note": "Problem is unsolvable"}
 
+        if status == up_results.PlanGenerationResultStatus.TIMEOUT:
+            return {"error": True,
+                    "message": f"Planner timed out after {DEFAULT_TIMEOUT}s"}
 
-def _parse_fd_plan(stdout: str) -> list[str]:
-    """Parse Fast Downward plan from sas_plan file(s), falling back to stdout."""
-    # FD may write sas_plan, sas_plan.1, sas_plan.2, etc.
-    plan_files = sorted(globmod.glob(os.path.join(FD_PATH, "sas_plan*")))
-    for plan_file in plan_files:
-        plan = []
-        with open(plan_file) as f:
-            for line in f:
-                line = line.strip().rstrip("\r")
-                # Strip cost annotations like "; cost = 1"
-                if ";" in line:
-                    line = line[:line.index(";")].strip()
-                if line.startswith("("):
-                    plan.append(line.lower())
-        if plan:
-            return plan
+        if status == up_results.PlanGenerationResultStatus.MEMOUT:
+            return {"error": True,
+                    "message": "Planner ran out of memory"}
 
-    # Fallback: parse from stdout (some FD versions print plan inline)
-    plan = []
-    in_plan = False
-    for line in stdout.splitlines():
-        if "Actual search time" in line:
-            in_plan = True
-            continue
-        if in_plan:
-            if "Plan length:" in line:
-                break
-            stripped = line.strip()
-            if ";" in stripped:
-                stripped = stripped[:stripped.index(";")].strip()
-            if stripped.startswith("("):
-                plan.append(stripped.lower())
-    return plan
-
-
-def _parse_mff_plan(stdout: str) -> list[str]:
-    """Parse Metric-FF plan from stdout."""
-    plan = []
-    in_plan = False
-    for line in stdout.splitlines():
-        if "found legal plan as follows" in line.lower():
-            in_plan = True
-            continue
-        if in_plan:
-            stripped = line.strip()
-            if not stripped or "plan cost" in stripped.lower() or "time spent" in stripped.lower():
-                break
-            if ":" in stripped:
-                action = stripped.split(":", 1)[1].strip()
-                if action:
-                    plan.append(f"({action.lower()})")
-    return plan
+        # Planner finished but no plan found
+        return {
+            "plan": [],
+            "solve_time": solve_time,
+            "status": str(status),
+            "log": log[-3000:] if log else "",
+            "note": "Planner ran but did not find a plan.",
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -210,45 +169,12 @@ def classic_planner(
             "message": f"Unknown strategy '{strategy}'. Available: {', '.join(FD_STRATEGIES.keys())}",
         }
 
-    with _request_dir() as rd:
-        try:
-            dp = _ensure_file(domain, "domain.pddl", rd)
-            pp = _ensure_file(problem, "problem.pddl", rd)
-        except FileNotFoundError as e:
-            return {"error": True, "message": str(e)}
-
-        _clean_fd_artifacts()
-
-        args = ["python3", "fast-downward.py", dp, pp] + FD_STRATEGIES[strategy]
-        t1 = time.time()
-        try:
-            r = _run(args, cwd=FD_PATH)
-        except subprocess.TimeoutExpired:
-            _clean_fd_artifacts()
-            return {"error": True, "message": f"Fast Downward timed out after {DEFAULT_TIMEOUT}s"}
-        t2 = time.time()
-
-        combined = r.stdout + r.stderr
-        for phrase in ("unsolvable", "goal not fulfilled", "No plan will solve it"):
-            if phrase in combined:
-                _clean_fd_artifacts()
-                return {"plan": [], "solve_time": round(t2 - t1, 3), "note": "Problem is unsolvable"}
-
-        plan = _parse_fd_plan(r.stdout)
-        _clean_fd_artifacts()
-
-        if not plan:
-            # Include raw output so the agent can diagnose why parsing failed
-            return {
-                "plan": [],
-                "solve_time": round(t2 - t1, 3),
-                "exit_code": r.returncode,
-                "raw_stdout": r.stdout[-3000:] if r.stdout else "",
-                "raw_stderr": r.stderr[-1000:] if r.stderr else "",
-                "note": "Planner ran but no plan was parsed. Check raw output for details.",
-            }
-
-        return {"plan": plan, "solve_time": round(t2 - t1, 3)}
+    return _solve(
+        engine_name="fast-downward",
+        domain=domain,
+        problem=problem,
+        params={"fast_downward_search_config": FD_STRATEGIES[strategy]},
+    )
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
@@ -256,44 +182,12 @@ def numeric_planner(
     domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
     problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
 ) -> dict:
-    """Computes a plan for a PDDL problem with numeric fluents (:functions, increase, decrease) using Metric-FF.
+    """Computes a plan for a PDDL problem with numeric fluents (:functions, increase, decrease) using ENHSP.
     Use this instead of classic_planner when the domain uses :functions or numeric effects.
     Does NOT support durative/temporal actions.
     Returns dict with 'plan' (action list, empty if unsolvable) and 'solve_time' (seconds).
     On failure returns dict with 'error' and 'message'."""
-    with _request_dir() as rd:
-        try:
-            dp = _ensure_file(domain, "domain.pddl", rd)
-            pp = _ensure_file(problem, "problem.pddl", rd)
-        except FileNotFoundError as e:
-            return {"error": True, "message": str(e)}
-
-        args = ["./ff", "-o", dp, "-f", pp, "-s", "0"]
-        t1 = time.time()
-        try:
-            r = _run(args, cwd=MFF_PATH)
-        except subprocess.TimeoutExpired:
-            return {"error": True, "message": f"Metric-FF timed out after {DEFAULT_TIMEOUT}s"}
-        t2 = time.time()
-
-        combined = r.stdout + r.stderr
-        for phrase in ("unsolvable", "goal not fulfilled", "No plan will solve it"):
-            if phrase in combined:
-                return {"plan": [], "solve_time": round(t2 - t1, 3), "note": "Problem is unsolvable"}
-
-        plan = _parse_mff_plan(r.stdout)
-
-        if not plan:
-            return {
-                "plan": [],
-                "solve_time": round(t2 - t1, 3),
-                "exit_code": r.returncode,
-                "raw_stdout": r.stdout[-3000:] if r.stdout else "",
-                "raw_stderr": r.stderr[-1000:] if r.stderr else "",
-                "note": "Planner ran but no plan was parsed. Check raw output for details.",
-            }
-
-        return {"plan": plan, "solve_time": round(t2 - t1, 3)}
+    return _solve(engine_name="enhsp", domain=domain, problem=problem)
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False})
@@ -323,19 +217,16 @@ def save_plan(
         tag = "_".join(parts) if parts else uuid.uuid4().hex[:6]
 
     # Resolve output directory
-    if output_dir:
-        container_dir = _host_to_container(output_dir.strip())
-    else:
-        container_dir = DEFAULT_PLANS_DIR
-    os.makedirs(container_dir, exist_ok=True)
+    plans_dir = os.path.expanduser(output_dir.strip()) if output_dir else DEFAULT_PLANS_DIR
+    os.makedirs(plans_dir, exist_ok=True)
 
     # Avoid overwriting existing files
-    filepath = os.path.join(container_dir, f"plan_{tag}.solution")
+    filepath = os.path.join(plans_dir, f"plan_{tag}.solution")
     if os.path.exists(filepath):
         counter = 1
-        while os.path.exists(os.path.join(container_dir, f"plan_{tag}_{counter}.solution")):
+        while os.path.exists(os.path.join(plans_dir, f"plan_{tag}_{counter}.solution")):
             counter += 1
-        filepath = os.path.join(container_dir, f"plan_{tag}_{counter}.solution")
+        filepath = os.path.join(plans_dir, f"plan_{tag}_{counter}.solution")
 
     # Write file with metadata header
     with open(filepath, "w") as f:
@@ -351,10 +242,8 @@ def save_plan(
         for action in plan:
             f.write(str(action) + "\n")
 
-    host_path = _container_to_host(filepath)
     return {
-        "file_path": host_path,
-        "container_path": filepath,
+        "file_path": filepath,
         "plan_length": len(plan),
     }
 

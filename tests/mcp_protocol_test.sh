@@ -4,7 +4,6 @@
 # that direct Python imports would miss.
 set -euo pipefail
 
-IMAGE="${1:-ghcr.io/spl-bgu/pddl-sandbox:latest}"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 FAILURES=0
@@ -16,11 +15,9 @@ ERRLOG=$(mktemp)
 trap 'rm -f "$ERRLOG"' EXIT
 
 echo "=== MCP Protocol Smoke Tests ==="
-echo "Image: $IMAGE"
 echo ""
 
-# Python script that uses the mcp SDK client (installed in the Docker image as a
-# FastMCP dependency) to connect via stdio and verify all expected tools are registered.
+# Generic MCP tools/list verification script (works both in Docker and natively)
 MCP_LIST_SCRIPT='
 import asyncio
 import sys
@@ -29,7 +26,9 @@ from mcp.client.stdio import stdio_client
 
 async def main():
     expected = set(sys.argv[1].split(","))
-    params = StdioServerParameters(command="python3", args=["/opt/server/pddl_server.py"])
+    server_cmd = sys.argv[2]
+    server_args = sys.argv[3:]
+    params = StdioServerParameters(command=server_cmd, args=server_args)
     async with stdio_client(params) as (read, write):
         async with ClientSession(read, write) as session:
             await session.initialize()
@@ -46,16 +45,30 @@ asyncio.run(main())
 '
 
 # ---------------------------------------------------------------------------
-# Test each plugin
+# Test pddl-solver (Tier 1, native)
 # ---------------------------------------------------------------------------
 
-echo "--- pddl-solver ---"
-SOLVER_SERVER="$REPO_ROOT/plugins/pddl-solver/server/solver_server.py"
+echo "--- pddl-solver (Tier 1) ---"
+SOLVER_DIR="$REPO_ROOT/plugins/pddl-solver"
+SOLVER_VENV="$SOLVER_DIR/.venv"
+
+# Ensure venv exists
+if [ ! -d "$SOLVER_VENV" ]; then
+    echo "  Setting up solver venv..."
+    if command -v uv &>/dev/null; then
+        uv venv "$SOLVER_VENV"
+        uv pip install --python "$SOLVER_VENV/bin/python3" -r "$SOLVER_DIR/requirements.txt"
+    else
+        python3 -m venv "$SOLVER_VENV"
+        "$SOLVER_VENV/bin/pip" install --quiet -r "$SOLVER_DIR/requirements.txt"
+    fi
+fi
+
+SOLVER_PYTHON="$SOLVER_VENV/bin/python3"
 echo -n "  MCP tools/list...       "
-if docker run --rm \
-    -v "${SOLVER_SERVER}:/opt/server/pddl_server.py:ro" \
-    "$IMAGE" \
-    python3 -c "$MCP_LIST_SCRIPT" "classic_planner,numeric_planner,save_plan" \
+if $SOLVER_PYTHON -c "$MCP_LIST_SCRIPT" \
+    "classic_planner,numeric_planner,save_plan" \
+    "$SOLVER_PYTHON" "$SOLVER_DIR/server/solver_server.py" \
     2>"$ERRLOG" | grep -q "ALL_TOOLS_OK"; then
     pass "all 3 tools registered"
 else
@@ -63,14 +76,32 @@ else
     cat "$ERRLOG" >&2
 fi
 
+# ---------------------------------------------------------------------------
+# Test pddl-validator (Tier 1, native)
+# ---------------------------------------------------------------------------
+
 echo ""
-echo "--- pddl-validator ---"
-VALIDATOR_SERVER="$REPO_ROOT/plugins/pddl-validator/server/validator_server.py"
+echo "--- pddl-validator (Tier 1) ---"
+VALIDATOR_DIR="$REPO_ROOT/plugins/pddl-validator"
+VALIDATOR_VENV="$VALIDATOR_DIR/.venv"
+
+# Ensure venv exists
+if [ ! -d "$VALIDATOR_VENV" ]; then
+    echo "  Setting up validator venv..."
+    if command -v uv &>/dev/null; then
+        uv venv "$VALIDATOR_VENV"
+        uv pip install --python "$VALIDATOR_VENV/bin/python3" -r "$VALIDATOR_DIR/requirements.txt"
+    else
+        python3 -m venv "$VALIDATOR_VENV"
+        "$VALIDATOR_VENV/bin/pip" install --quiet -r "$VALIDATOR_DIR/requirements.txt"
+    fi
+fi
+
+VALIDATOR_PYTHON="$VALIDATOR_VENV/bin/python3"
 echo -n "  MCP tools/list...       "
-if docker run --rm \
-    -v "${VALIDATOR_SERVER}:/opt/server/pddl_server.py:ro" \
-    "$IMAGE" \
-    python3 -c "$MCP_LIST_SCRIPT" "validate_pddl_syntax,get_state_transition" \
+if $VALIDATOR_PYTHON -c "$MCP_LIST_SCRIPT" \
+    "validate_pddl_syntax,get_state_transition" \
+    "$VALIDATOR_PYTHON" "$VALIDATOR_DIR/server/validator_server.py" \
     2>"$ERRLOG" | grep -q "ALL_TOOLS_OK"; then
     pass "all 2 tools registered"
 else
