@@ -25,7 +25,8 @@ from backends import (
     ProblemInfo,
     TrajectoryResult,
     TrajectoryStep,
-    parse_action_call,
+    normalize_action_input,
+    suggest_close_match,
 )
 
 
@@ -80,7 +81,12 @@ class UnifiedPlanningBackend:
         for action in up_problem.actions:
             if action.name == action_name:
                 return action
-        return None
+        lowered = action_name.lower()
+        for action in up_problem.actions:
+            if action.name.lower() == lowered:
+                return action
+        suggestion = suggest_close_match(action_name, [a.name for a in up_problem.actions])
+        raise ValueError(f"Unknown action: '{action_name}'.{suggestion}")
 
     @staticmethod
     def _resolve_parameters(up_problem, param_names: list[str], schema=None):
@@ -99,7 +105,14 @@ class UnifiedPlanningBackend:
                     found = obj
                     break
             if found is None:
-                raise ValueError(f"Object '{pname}' not found in problem")
+                lowered = pname.lower()
+                for obj in up_problem.all_objects:
+                    if obj.name.lower() == lowered:
+                        found = obj
+                        break
+            if found is None:
+                suggestion = suggest_close_match(pname, [o.name for o in up_problem.all_objects])
+                raise ValueError(f"Object '{pname}' not found in problem.{suggestion}")
             param_objects.append(found)
         return param_objects
 
@@ -256,12 +269,9 @@ class UnifiedPlanningBackend:
         steps = []
         for action_str in actions:
             state_preds = self._state_to_preds(state, up_problem)
-            action_name, param_names = parse_action_call(action_str)
+            action_name, param_names = normalize_action_input(action_str)
 
             schema = self._find_action_schema(up_problem, action_name)
-            if schema is None:
-                raise ValueError(f"Unknown action: '{action_name}'")
-
             param_objects = self._resolve_parameters(up_problem, param_names, schema)
             instance = ActionInstance(schema, tuple(param_objects))
 
@@ -356,11 +366,8 @@ class UnifiedPlanningBackend:
         simulator = SequentialSimulator(up_problem)
         state = self._resolve_state(state_preds, up_problem, simulator)
 
-        action_name, param_names = parse_action_call(action_str)
+        action_name, param_names = normalize_action_input(action_str)
         schema = self._find_action_schema(up_problem, action_name)
-        if schema is None:
-            raise ValueError(f"Unknown action: '{action_name}'")
-
         param_objects = self._resolve_parameters(up_problem, param_names, schema)
         instance = ActionInstance(schema, tuple(param_objects))
         applicable = simulator.is_applicable(state, instance)

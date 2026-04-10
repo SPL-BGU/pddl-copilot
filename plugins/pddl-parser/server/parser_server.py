@@ -46,8 +46,11 @@ def _init_backends():
 
 _init_backends()
 
-# Default backend order for fallback (pddl-plus-parser preferred)
-_BACKEND_ORDER = ["pddl-plus-parser", "unified-planning"]
+# Try unified-planning first: it handles classical STRIPS + ADL (conditional effects,
+# quantifiers, disjunctive preconditions) — the common case. Fall back to pddl-plus-parser
+# for PDDL+ numeric features UP's numeric path hasn't been validated against yet.
+# TODO: once UP numeric support is battle-tested on SPL-BGU domains, consider UP-only.
+_BACKEND_ORDER = ["unified-planning", "pddl-plus-parser"]
 
 # ---------------------------------------------------------------------------
 # Shared helpers

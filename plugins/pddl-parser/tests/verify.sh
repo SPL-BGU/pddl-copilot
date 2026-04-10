@@ -379,6 +379,54 @@ else:
                   "UP_PARITY_CHECK", "NORMALIZE_PARITY"]:
         print(f"TEST:{name}:SKIP")
 
+# -- Flexible action-input tests — exercise both backends --
+BACKENDS_TO_TEST = ["unified-planning", "pddl-plus-parser"] if UP_AVAILABLE else ["pddl-plus-parser"]
+
+print("TEST:FLEXIBLE_ACTION_SEXPR:", end="")
+for b in BACKENDS_TO_TEST:
+    r = check_applicable(DOMAIN, PROBLEM, "initial", "(pick-up a)", parser=b)
+    assert "error" not in r and r["applicable"] is True, f"{b}: {r}"
+print("OK")
+
+print("TEST:FLEXIBLE_ACTION_BARE:", end="")
+for b in BACKENDS_TO_TEST:
+    r = check_applicable(DOMAIN, PROBLEM, "initial", "pick-up a", parser=b)
+    assert "error" not in r and r["applicable"] is True, f"{b}: {r}"
+print("OK")
+
+print("TEST:FLEXIBLE_ACTION_FUNC:", end="")
+for b in BACKENDS_TO_TEST:
+    r = check_applicable(DOMAIN, PROBLEM, "initial", "pick-up(a)", parser=b)
+    assert "error" not in r and r["applicable"] is True, f"{b}: {r}"
+print("OK")
+
+print("TEST:FLEXIBLE_ACTION_CASE:", end="")
+for b in BACKENDS_TO_TEST:
+    r = check_applicable(DOMAIN, PROBLEM, "initial", "PICK-UP a", parser=b)
+    assert "error" not in r and r["applicable"] is True, f"{b}: {r}"
+print("OK")
+
+print("TEST:FLEXIBLE_ACTION_COMMENT:", end="")
+for b in BACKENDS_TO_TEST:
+    r = check_applicable(DOMAIN, PROBLEM, "initial", "(pick-up a) ; from plan", parser=b)
+    assert "error" not in r and r["applicable"] is True, f"{b}: {r}"
+print("OK")
+
+print("TEST:FUZZY_SUGGESTION:", end="")
+for b in BACKENDS_TO_TEST:
+    r = check_applicable(DOMAIN, PROBLEM, "initial", "pikup a", parser=b)
+    assert "error" in r, f"{b}: expected error, got {r}"
+    assert "pick-up" in r["message"], f"{b}: expected 'pick-up' in suggestion, got {r['message']}"
+print("OK")
+
+print("TEST:FLEXIBLE_TRAJECTORY_MIXED:", end="")
+MIXED_PLAN = "(PICK-UP a)\nstack(a, b)"
+for b in BACKENDS_TO_TEST:
+    r = get_trajectory(DOMAIN, PROBLEM, MIXED_PLAN, parser=b)
+    assert "error" not in r, f"{b}: {r}"
+    assert r["num_steps"] == 2, f"{b}: expected 2 steps, got {r['num_steps']}"
+print("OK")
+
 print("TEST:DONE")
 PYEOF
 
@@ -393,7 +441,10 @@ for TEST_NAME in IMPORT TRAJECTORY ERROR_HANDLING INSPECT_DOMAIN INSPECT_PROBLEM
     PARSER_USED INVALID_PARSER \
     UP_TRAJECTORY UP_INSPECT_PROBLEM UP_CHECK_APPLICABLE UP_CHECK_INAPPLICABLE UP_APPLICABLE_ACTIONS \
     UP_INSPECT_DOMAIN UP_STATE_RECONSTRUCTION UP_PARAM_COUNT_ERROR UP_TYPE_HIERARCHY \
-    UP_PARITY_CHECK NORMALIZE_PARITY; do
+    UP_PARITY_CHECK NORMALIZE_PARITY \
+    FLEXIBLE_ACTION_SEXPR FLEXIBLE_ACTION_BARE FLEXIBLE_ACTION_FUNC \
+    FLEXIBLE_ACTION_CASE FLEXIBLE_ACTION_COMMENT FUZZY_SUGGESTION \
+    FLEXIBLE_TRAJECTORY_MIXED; do
 
     LABEL=$(echo "$TEST_NAME" | tr '_' ' ' | tr '[:upper:]' '[:lower:]')
     printf "%-40s" "$LABEL..."
