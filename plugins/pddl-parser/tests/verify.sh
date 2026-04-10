@@ -427,62 +427,6 @@ for b in BACKENDS_TO_TEST:
     assert r["num_steps"] == 2, f"{b}: expected 2 steps, got {r['num_steps']}"
 print("OK")
 
-# -- Regression tests for backend-routing + bare-literal workaround --
-BARE_DOMAIN = """(define (domain bw-bare)
-  (:requirements :strips :typing)
-  (:types block)
-  (:predicates (holding ?x - block) (clear ?x - block)
-               (ontable ?x - block) (handempty))
-  (:action put-down
-    :parameters (?x - block)
-    :precondition (holding ?x)
-    :effect (and (not (holding ?x)) (clear ?x)
-                 (handempty) (ontable ?x))))"""
-
-print("TEST:NORMALIZE_BARE_PRECONDITION:", end="")
-# Default parser routes classical to UP, which handles bare literals natively.
-r = normalize_pddl(BARE_DOMAIN, output_format="pddl")
-assert r["valid"] is True, f"normalize_pddl failed: {r}"
-assert "(holding ?x)" in r["normalized"], \
-    f"bare literal lost in default path: {r['normalized']}"
-# Explicit pddl-plus-parser must also preserve via the (and ...) wrapper.
-r2 = inspect_domain(BARE_DOMAIN, parser="pddl-plus-parser")
-put_down = next(a for a in r2["actions"] if a["name"] == "put-down")
-assert "holding" in put_down["precondition"], \
-    f"pddl-plus-parser bare literal lost: {put_down['precondition']!r}"
-print("OK")
-
-COUNTERS_DOMAIN = """(define (domain fn-counters)
-  (:types counter)
-  (:functions (value ?c - counter) (max_int))
-  (:action increment
-    :parameters (?c - counter)
-    :precondition (and (<= (+ (value ?c) 1) (max_int)))
-    :effect (and (increase (value ?c) 1))))"""
-
-print("TEST:NORMALIZE_NUMERIC_ROUTING:", end="")
-# Default parser must route numeric to pddl-plus-parser so numeric
-# preconditions/effects survive. UP would silently emit effect: () here.
-r = normalize_pddl(COUNTERS_DOMAIN, output_format="json")
-assert r["valid"] is True, f"normalize_pddl failed: {r}"
-assert r["normalized"].get("parser_used") == "pddl-plus-parser", \
-    f"numeric must route to pddl-plus-parser, got {r['normalized'].get('parser_used')}"
-inc = next(a for a in r["normalized"]["actions"] if a["name"] == "increment")
-assert "(increase" in inc["effect"], \
-    f"numeric effect dropped — routing failed: {inc['effect']!r}"
-assert "(<=" in inc["precondition"], \
-    f"numeric precondition mangled: {inc['precondition']!r}"
-print("OK")
-
-print("TEST:NUMERIC_ROUTING_PDDL_OUTPUT:", end="")
-r = normalize_pddl(COUNTERS_DOMAIN, output_format="pddl")
-assert r["valid"] is True, f"normalize_pddl failed: {r}"
-assert "(increase" in r["normalized"], \
-    f"numeric effect dropped in PDDL output: {r['normalized']}"
-assert "(<=" in r["normalized"], \
-    f"numeric precondition dropped in PDDL output: {r['normalized']}"
-print("OK")
-
 print("TEST:DONE")
 PYEOF
 
@@ -500,8 +444,7 @@ for TEST_NAME in IMPORT TRAJECTORY ERROR_HANDLING INSPECT_DOMAIN INSPECT_PROBLEM
     UP_PARITY_CHECK NORMALIZE_PARITY \
     FLEXIBLE_ACTION_SEXPR FLEXIBLE_ACTION_BARE FLEXIBLE_ACTION_FUNC \
     FLEXIBLE_ACTION_CASE FLEXIBLE_ACTION_COMMENT FUZZY_SUGGESTION \
-    FLEXIBLE_TRAJECTORY_MIXED \
-    NORMALIZE_BARE_PRECONDITION NORMALIZE_NUMERIC_ROUTING NUMERIC_ROUTING_PDDL_OUTPUT; do
+    FLEXIBLE_TRAJECTORY_MIXED; do
 
     LABEL=$(echo "$TEST_NAME" | tr '_' ' ' | tr '[:upper:]' '[:lower:]')
     printf "%-40s" "$LABEL..."

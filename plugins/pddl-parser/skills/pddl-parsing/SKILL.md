@@ -51,11 +51,11 @@ Action strings are case-insensitive and accept several forms: `(pick-up a)`, `pi
 
 ### Parser backends
 
-Both backends are always available. Default (null) auto-routes by feature: domains declaring `:functions` (numeric fluents) go to pddl-plus-parser, all others to unified-planning. Auto-selection falls back to the other backend on exception.
-- **unified-planning** (default for classical): STRIPS + ADL features (`:conditional-effects`, `:existential-preconditions`, `:universal-preconditions`, `:disjunctive-preconditions`). Handles bare atomic preconditions natively.
-- **pddl-plus-parser** (default for numeric): STRIPS + numeric fluents (`:functions`, `increase`, `decrease`).
+Both backends are always available. Default (null) tries unified-planning first, then falls back to pddl-plus-parser.
+- **unified-planning** (default): STRIPS + ADL features (`:conditional-effects`, `:existential-preconditions`, `:universal-preconditions`, `:disjunctive-preconditions`)
+- **pddl-plus-parser**: STRIPS + numeric fluents (`:functions`, `increase`, `decrease`)
 
-Let auto-select handle backend choice. Pass `parser=` explicitly only when overriding for debugging or forcing a specific backend.
+If the domain uses numeric fluents, pass `parser="pddl-plus-parser"`. For ADL or plain STRIPS, let auto-select handle it.
 
 ### Cross-plugin workflows (optional)
 
