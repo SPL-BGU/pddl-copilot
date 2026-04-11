@@ -7,7 +7,10 @@ Extracted from parser_server.py. All predicate strings use s-expression format.
 from pathlib import Path
 from typing import Optional
 import itertools
+import os
+import re
 import sys
+import tempfile
 
 from pddl_plus_parser.exporters import TrajectoryExporter
 from pddl_plus_parser.lisp_parsers import DomainParser, ProblemParser
@@ -30,20 +33,103 @@ from backends import (
 )
 
 
+_PRECOND_CONNECTIVES = frozenset(("and", "or", "not", "forall", "exists", "imply", "when"))
+_PRECOND_KEYWORD = re.compile(r":precondition\b", re.IGNORECASE)
+_HEAD_TOKEN = re.compile(r"\(\s*([A-Za-z][A-Za-z0-9_\-]*)")
+
+
+def _wrap_bare_preconditions(text: str) -> str:
+    """Wrap atomic :precondition literals in (and ...).
+
+    Upstream pddl-plus-parser has a bug where a bare :precondition (P ...)
+    is silently dropped and the parser returns an empty conjunction, which
+    stringifies back to "(and )". Wrapping atomic literals as (and (P ...))
+    keeps the precondition intact without touching the library.
+    """
+    out = []
+    pos = 0
+    while pos < len(text):
+        m = _PRECOND_KEYWORD.search(text, pos)
+        if not m:
+            out.append(text[pos:])
+            break
+        out.append(text[pos:m.end()])
+        i = m.end()
+        while i < len(text) and text[i].isspace():
+            i += 1
+        if i >= len(text) or text[i] != "(":
+            pos = i
+            continue
+
+        start = i
+        depth = 0
+        j = i
+        while j < len(text):
+            c = text[j]
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+                if depth == 0:
+                    break
+            j += 1
+        if depth != 0:
+            out.append(text[i:])
+            break
+
+        sexpr = text[start:j + 1]
+        out.append(text[m.end():start])
+
+        head = _HEAD_TOKEN.match(sexpr)
+        if head and head.group(1).lower() in _PRECOND_CONNECTIVES:
+            out.append(sexpr)
+        else:
+            out.append(f"(and {sexpr})")
+        pos = j + 1
+    return "".join(out)
+
+
 class PddlPlusBackend:
     name = "pddl-plus-parser"
 
     # -- internal helpers --------------------------------------------------
 
     def _parse(self, domain_path: str, problem_path: str):
-        parsed_domain = DomainParser(Path(domain_path)).parse_domain()
+        parsed_domain = self._parse_domain_wrapped(domain_path)
         parsed_problem = ProblemParser(
             problem_path=Path(problem_path), domain=parsed_domain
         ).parse_problem()
         return parsed_domain, parsed_problem
 
     def _parse_domain_only(self, domain_path: str):
-        return DomainParser(Path(domain_path)).parse_domain()
+        return self._parse_domain_wrapped(domain_path)
+
+    @staticmethod
+    def _parse_domain_wrapped(domain_path: str):
+        """Parse a domain after pre-wrapping bare preconditions. Writes a
+        sibling temp file in the same directory so any relative :include
+        references resolve, and cleans it up afterwards."""
+        try:
+            with open(domain_path, encoding="utf-8") as f:
+                content = f.read()
+        except (OSError, UnicodeDecodeError):
+            return DomainParser(Path(domain_path)).parse_domain()
+
+        wrapped = _wrap_bare_preconditions(content)
+        if wrapped == content:
+            return DomainParser(Path(domain_path)).parse_domain()
+
+        parent = Path(domain_path).parent
+        fd, tmp_path = tempfile.mkstemp(suffix=".pddl", dir=str(parent))
+        try:
+            with os.fdopen(fd, "w") as f:
+                f.write(wrapped)
+            return DomainParser(Path(tmp_path)).parse_domain()
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
 
     @staticmethod
     def _build_initial_state(parsed_problem) -> State:

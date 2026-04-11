@@ -49,8 +49,20 @@ _init_backends()
 # Try unified-planning first: it handles classical STRIPS + ADL (conditional effects,
 # quantifiers, disjunctive preconditions) — the common case. Fall back to pddl-plus-parser
 # for PDDL+ numeric features UP's numeric path hasn't been validated against yet.
-# TODO: once UP numeric support is battle-tested on SPL-BGU domains, consider UP-only.
+# Numeric domains (detected by _is_numeric_domain) override this order and go to
+# pddl-plus-parser first, because UP silently drops numeric effects instead of raising.
 _BACKEND_ORDER = ["unified-planning", "pddl-plus-parser"]
+
+_NUMERIC_MARKERS = re.compile(r"\(\s*:functions\b|:numeric-fluents\b|:fluents\b", re.IGNORECASE)
+
+
+def _is_numeric_domain(content: str) -> bool:
+    """Return True if PDDL text declares numeric fluents (:functions or
+    :numeric-fluents/:fluents requirement). False positives route to
+    pddl-plus-parser which handles STRIPS fine; false negatives route to UP
+    which silently corrupts numeric output — the case we must avoid.
+    """
+    return bool(_NUMERIC_MARKERS.search(content))
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -274,11 +286,33 @@ def _domain_info_to_pddl(info: DomainInfo) -> str:
 # Backend dispatch
 # ---------------------------------------------------------------------------
 
+def _resolve_backend_order(args: tuple) -> list:
+    """Pick backend attempt order based on domain content.
+
+    Call sites pass the domain path as args[0]. If that file contains numeric
+    markers (`:functions`, `:numeric-fluents`), route to pddl-plus-parser first
+    because UP silently corrupts numeric effects. Otherwise use the default.
+    """
+    if not args or not isinstance(args[0], str):
+        return list(_BACKEND_ORDER)
+    try:
+        with open(args[0], encoding="utf-8") as f:
+            content = f.read()
+    except (OSError, UnicodeDecodeError):
+        return list(_BACKEND_ORDER)
+
+    if _is_numeric_domain(content):
+        preferred = "pddl-plus-parser"
+        return [preferred] + [b for b in _BACKEND_ORDER if b != preferred]
+    return list(_BACKEND_ORDER)
+
+
 def _run_with_fallback(method_name: str, parser: Optional[str], *args, **kwargs):
     """Run a backend method, optionally with fallback.
 
     If parser is specified, use only that backend (no fallback).
-    If parser is None, try backends in order; fallback on failure.
+    If parser is None, auto-route based on domain features, then try backends
+    in that order with exception-triggered fallback.
     Returns (result, backend_name).
     """
     if parser:
@@ -288,9 +322,9 @@ def _run_with_fallback(method_name: str, parser: Optional[str], *args, **kwargs)
         backend = _backends[parser]
         return getattr(backend, method_name)(*args, **kwargs), backend.name
 
-    # Auto-select with fallback
+    order = _resolve_backend_order(args)
     errors = []
-    for name in _BACKEND_ORDER:
+    for name in order:
         if name not in _backends:
             continue
         backend = _backends[name]
