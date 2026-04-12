@@ -94,6 +94,18 @@ class PddlPlusBackend:
 
     # -- internal helpers --------------------------------------------------
 
+    @staticmethod
+    def _find_action(parsed_domain, action_name: str):
+        action = parsed_domain.actions.get(action_name)
+        if action is not None:
+            return action_name, action
+        lowered = action_name.lower()
+        for real_name, action in parsed_domain.actions.items():
+            if real_name.lower() == lowered:
+                return real_name, action
+        suggestion = suggest_close_match(action_name, list(parsed_domain.actions.keys()))
+        raise ValueError(f"Unknown action: '{action_name}'.{suggestion}")
+
     def _parse(self, domain_path: str, problem_path: str):
         parsed_domain = self._parse_domain_wrapped(domain_path)
         parsed_problem = ProblemParser(
@@ -216,12 +228,7 @@ class PddlPlusBackend:
         canonical_actions = []
         for a in actions:
             name, args = normalize_action_input(a)
-            if name not in parsed_domain.actions:
-                lowered = name.lower()
-                for real_name in parsed_domain.actions:
-                    if real_name.lower() == lowered:
-                        name = real_name
-                        break
+            name, _ = self._find_action(parsed_domain, name)
             canonical_actions.append(canonicalize_action(name, args))
 
         exporter = TrajectoryExporter(domain=parsed_domain)
@@ -310,18 +317,7 @@ class PddlPlusBackend:
         parsed_domain, parsed_problem = self._parse(domain_path, problem_path)
         resolved_state = self._resolve_state(state_preds, parsed_domain, parsed_problem)
         action_name, action_objects = normalize_action_input(action_str)
-
-        lifted_action = parsed_domain.actions.get(action_name)
-        if lifted_action is None:
-            lowered = action_name.lower()
-            for real_name, action in parsed_domain.actions.items():
-                if real_name.lower() == lowered:
-                    lifted_action = action
-                    action_name = real_name
-                    break
-        if lifted_action is None:
-            suggestion = suggest_close_match(action_name, list(parsed_domain.actions.keys()))
-            raise ValueError(f"Unknown action: '{action_name}'.{suggestion}")
+        action_name, lifted_action = self._find_action(parsed_domain, action_name)
 
         expected_params = len(lifted_action.signature)
         if len(action_objects) != expected_params:
