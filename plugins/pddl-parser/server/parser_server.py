@@ -69,7 +69,19 @@ def _is_numeric_domain(content: str) -> bool:
 # ---------------------------------------------------------------------------
 
 TEMP_DIR = os.environ.get("PDDL_TEMP_DIR", os.path.join(tempfile.gettempdir(), "pddl-parser"))
+RESULTS_DIR = os.path.join(TEMP_DIR, "results")
+COMPACT = os.environ.get("PDDL_COMPACT_RESULTS", "0") == "1"
+
 os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+
+def _save_full_result(data: dict) -> str:
+    """Write full result dict to a JSON file and return the path."""
+    path = os.path.join(RESULTS_DIR, f"{uuid.uuid4().hex[:8]}.json")
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+    return path
 
 
 @contextmanager
@@ -384,12 +396,43 @@ def get_trajectory(
                     "action": step.action,
                 }
 
-            return {
+            full = {
                 "trajectory": trajectory,
                 "final_state": _format_state(result.final_state),
                 "num_steps": len(result.steps),
                 "parser_used": parser_used,
             }
+
+            if COMPACT:
+                result_file = _save_full_result(full)
+                # Delta-encode: step 1 = full state, rest = added/removed only
+                delta_traj = {}
+                prev_preds = None
+                for i, step in enumerate(result.steps):
+                    cur_preds = set(step.state_predicates)
+                    if prev_preds is None:
+                        delta_traj[str(i + 1)] = {
+                            "state": _format_state(step.state_predicates, is_init=True),
+                            "action": step.action,
+                        }
+                    else:
+                        added = sorted(cur_preds - prev_preds)
+                        removed = sorted(prev_preds - cur_preds)
+                        delta_traj[str(i + 1)] = {
+                            "added": added,
+                            "removed": removed,
+                            "action": step.action,
+                        }
+                    prev_preds = cur_preds
+                return {
+                    "trajectory": delta_traj,
+                    "final_state": _format_state(result.final_state),
+                    "num_steps": len(result.steps),
+                    "parser_used": parser_used,
+                    "result_file": result_file,
+                }
+
+            return full
 
         except Exception as e:
             return {"error": True, "message": f"{type(e).__name__}: {e}"}
@@ -422,12 +465,20 @@ def inspect_domain(
                 "inspect_domain", parser, domain_path
             )
 
+            actions = result.actions
+            if COMPACT:
+                # Strip verbose precondition/effect text — keep name + parameters only
+                actions = [
+                    {"name": a["name"], "parameters": a.get("parameters", {})}
+                    for a in actions
+                ]
+
             out = {
                 "name": result.name,
                 "requirements": result.requirements,
                 "types": result.types,
                 "predicates": result.predicates,
-                "actions": result.actions,
+                "actions": actions,
                 "parser_used": parser_used,
             }
 
@@ -439,11 +490,12 @@ def inspect_domain(
                         "inspect_problem", parser, domain_path, problem_path
                     )
                     out["objects"] = prob_result.objects
-                    out["init"] = prob_result.init
-                    out["goal"] = prob_result.goal
                     out["num_objects"] = len(prob_result.objects)
                     out["num_init_facts"] = len(prob_result.init)
                     out["num_goal_conditions"] = len(prob_result.goal)
+                    if not COMPACT:
+                        out["init"] = prob_result.init
+                        out["goal"] = prob_result.goal
                 except Exception as e:
                     out["problem_warning"] = f"Could not parse problem: {e}"
 
@@ -476,17 +528,19 @@ def inspect_problem(
                 "inspect_problem", parser, domain_path, problem_path
             )
 
-            return {
+            out = {
                 "name": result.name,
                 "domain_name": result.domain_name,
                 "objects": result.objects,
-                "init": result.init,
-                "goal": result.goal,
                 "num_objects": len(result.objects),
                 "num_init_facts": len(result.init),
                 "num_goal_conditions": len(result.goal),
                 "parser_used": parser_used,
             }
+            if not COMPACT:
+                out["init"] = result.init
+                out["goal"] = result.goal
+            return out
 
         except Exception as e:
             return {"error": True, "message": f"{type(e).__name__}: {e}"}
@@ -548,11 +602,13 @@ def diff_states(
     except (json.JSONDecodeError, TypeError) as e:
         return {"error": True, "message": f"Invalid JSON: {e}"}
 
-    return {
+    out = {
         "added": sorted(after - before),
         "removed": sorted(before - after),
-        "unchanged": sorted(before & after),
     }
+    if not COMPACT:
+        out["unchanged"] = sorted(before & after)
+    return out
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
@@ -601,20 +657,33 @@ def normalize_pddl(
                 if output_format == "pddl":
                     normalized = _domain_info_to_pddl(result)
                 else:
+                    actions = result.actions
+                    if COMPACT:
+                        actions = [
+                            {"name": a["name"], "parameters": a.get("parameters", {})}
+                            for a in actions
+                        ]
                     normalized = {
                         "name": result.name,
                         "requirements": result.requirements,
                         "types": result.types,
                         "predicates": result.predicates,
-                        "actions": result.actions,
+                        "actions": actions,
                         "parser_used": parser_used,
                     }
-                return {
+
+                resp = {
                     "valid": True,
                     "type": "domain",
                     "normalized": normalized,
                     "warnings": [],
                 }
+                if COMPACT and isinstance(normalized, str) and len(normalized) > 3000:
+                    result_file = _save_full_result(resp)
+                    resp["normalized"] = normalized[:3000]
+                    resp["result_file"] = result_file
+                    resp["warnings"].append("Output truncated in compact mode. Full result saved to file.")
+                return resp
 
             else:
                 # Problem content
@@ -630,19 +699,23 @@ def normalize_pddl(
                         "name": prob_result.name,
                         "domain_name": prob_result.domain_name,
                         "objects": prob_result.objects,
-                        "init": prob_result.init,
-                        "goal": prob_result.goal,
                         "num_objects": len(prob_result.objects),
                         "num_init_facts": len(prob_result.init),
                         "num_goal_conditions": len(prob_result.goal),
                         "parser_used": parser_used,
                     }
+                    if not COMPACT:
+                        normalized["init"] = prob_result.init
+                        normalized["goal"] = prob_result.goal
                 else:
                     # Lightweight parse without domain — extract what we can
                     normalized = _lightweight_parse_problem(content)
                     normalized["num_objects"] = len(normalized["objects"])
                     normalized["num_init_facts"] = len(normalized["init"])
                     normalized["num_goal_conditions"] = len(normalized["goal"])
+                    if COMPACT:
+                        normalized.pop("init", None)
+                        normalized.pop("goal", None)
                     warnings.append(
                         "Parsed without domain — objects, init, and goal extracted "
                         "but predicates are not validated. Action details unavailable."

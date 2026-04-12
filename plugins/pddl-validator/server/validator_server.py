@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from typing import Annotated
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+import json
 import os
 import shutil
 import uuid
@@ -21,8 +22,11 @@ mcp = FastMCP("pddl-validator")
 # Configuration (overridable via environment variables)
 # ---------------------------------------------------------------------------
 TEMP_DIR = os.environ.get("PDDL_TEMP_DIR", "/tmp/pddl")
+RESULTS_DIR = os.path.join(TEMP_DIR, "results")
+COMPACT = os.environ.get("PDDL_COMPACT_RESULTS", "0") == "1"
 
 os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -37,6 +41,37 @@ def _request_dir():
         yield d
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+def _save_full_result(data: dict) -> str:
+    """Write full result dict to a JSON file and return the path."""
+    path = os.path.join(RESULTS_DIR, f"{uuid.uuid4().hex[:8]}.json")
+    with open(path, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+    return path
+
+
+def _delta_trajectory(trajectory: list[dict]) -> list[dict]:
+    """Convert full-state trajectory to delta-encoded: step 0 = full, rest = changes only."""
+    if not trajectory:
+        return trajectory
+    deltas = [trajectory[0]]  # first state is full
+    for i in range(1, len(trajectory)):
+        prev, curr = trajectory[i - 1], trajectory[i]
+        delta = {"step": curr["step"], "action": curr["action"]}
+        # Boolean: only include changed fluents
+        prev_b, curr_b = prev.get("boolean_fluents", {}), curr.get("boolean_fluents", {})
+        b_changed = {k: v for k, v in curr_b.items() if prev_b.get(k) != v}
+        b_removed = {k: False for k in prev_b if k not in curr_b}
+        if b_changed or b_removed:
+            delta["boolean_fluents"] = {**b_changed, **b_removed}
+        # Numeric: only include changed fluents
+        prev_n, curr_n = prev.get("numeric_fluents", {}), curr.get("numeric_fluents", {})
+        n_changed = {k: v for k, v in curr_n.items() if prev_n.get(k) != v}
+        if n_changed:
+            delta["numeric_fluents"] = n_changed
+        deltas.append(delta)
+    return deltas
 
 
 def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
@@ -98,12 +133,14 @@ def validate_pddl_syntax(
         except Exception as e:
             return {"error": True, "message": f"Validation error: {e}"}
 
-        return {
+        resp = {
             "valid": result.is_valid,
             "status": result.status,
             "report": result.report(),
-            "details": result.to_json(),
         }
+        if not COMPACT:
+            resp["details"] = result.to_json()
+        return resp
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
@@ -169,6 +206,22 @@ def get_state_transition(
                 "boolean_fluents": snap.boolean_fluents,
                 "numeric_fluents": snap.numeric_fluents,
             })
+
+        if COMPACT:
+            full = {
+                "valid": result.is_valid,
+                "report": result.report(verbose=True),
+                "steps": steps,
+                "trajectory": trajectory,
+                "details": result.to_json(),
+            }
+            result_file = _save_full_result(full)
+            return {
+                "valid": result.is_valid,
+                "steps": steps,
+                "trajectory": _delta_trajectory(trajectory),
+                "result_file": result_file,
+            }
 
         return {
             "valid": result.is_valid,

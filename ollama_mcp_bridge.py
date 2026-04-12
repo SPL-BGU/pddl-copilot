@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import sys
+import uuid
 from contextlib import AsyncExitStack
 
 import ollama
@@ -14,6 +15,12 @@ from mcp.client.stdio import stdio_client
 
 REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
 PLUGINS_DIR = os.path.join(REPO_ROOT, "plugins")
+RESULTS_DIR = os.path.join(os.environ.get("PDDL_TEMP_DIR", "/tmp/pddl"), "results")
+MAX_RESULT_CHARS = 4000  # ~1K tokens — safe for most Ollama context windows
+
+# Tell plugin servers to produce compact output
+os.environ["PDDL_COMPACT_RESULTS"] = "1"
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
 
 # ── Plugin discovery ────────────────────────────────────────────────────────
@@ -130,6 +137,17 @@ async def execute_tool_call(tool_name, arguments, tool_to_session):
     text = "\n".join(parts)
     if result.isError:
         return f"Error: {text}"
+
+    if len(text) > MAX_RESULT_CHARS:
+        path = os.path.join(RESULTS_DIR, f"{uuid.uuid4().hex[:8]}.json")
+        with open(path, "w") as f:
+            f.write(text)
+        text = (
+            f"[Result truncated ({len(text)} chars). "
+            f"Full output saved to: {path}]\n\n"
+            + text[:MAX_RESULT_CHARS]
+        )
+
     return text
 
 

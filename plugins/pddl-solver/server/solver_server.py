@@ -9,6 +9,7 @@ from contextlib import contextmanager
 from typing import Annotated, Literal
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+import json
 import os
 import shutil
 import time
@@ -24,10 +25,14 @@ mcp = FastMCP("pddl-solver")
 # Configuration (overridable via environment variables)
 # ---------------------------------------------------------------------------
 TEMP_DIR = os.environ.get("PDDL_TEMP_DIR", "/tmp/pddl")
+RESULTS_DIR = os.path.join(TEMP_DIR, "results")
 DEFAULT_TIMEOUT = int(os.environ.get("PDDL_TIMEOUT", "120"))
 DEFAULT_PLANS_DIR = os.path.expanduser("~/plans")
+COMPACT = os.environ.get("PDDL_COMPACT_RESULTS", "0") == "1"
+COMPACT_PLAN_THRESHOLD = 20  # auto-save plans longer than this in compact mode
 
 os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # Fast Downward search strategy presets (UP parameter format)
 # No spaces — UP passes these as CLI args to FD, spaces cause argument splitting
@@ -119,6 +124,17 @@ def _solve(engine_name: str, domain: str, problem: str,
 
         if result.status in up_results.POSITIVE_OUTCOMES:
             plan = _extract_plan(result)
+            if COMPACT and len(plan) > COMPACT_PLAN_THRESHOLD:
+                plan_file = os.path.join(RESULTS_DIR, f"{uuid.uuid4().hex[:8]}.json")
+                with open(plan_file, "w") as f:
+                    json.dump({"plan": plan, "solve_time": solve_time}, f, indent=2)
+                return {
+                    "plan_length": len(plan),
+                    "first_actions": plan[:5],
+                    "last_actions": plan[-5:],
+                    "solve_time": solve_time,
+                    "plan_file": plan_file,
+                }
             return {"plan": plan, "solve_time": solve_time}
 
         status = result.status
