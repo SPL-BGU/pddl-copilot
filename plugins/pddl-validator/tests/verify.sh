@@ -77,6 +77,28 @@ NUMERIC_PROBLEM = """(define (problem deliver) (:domain logistics)
 
 NUMERIC_PLAN = """(drive truck loc1 loc2)"""
 
+# Typed hierarchy: action parameter declares supertype, plan uses subtype objects.
+# Guards against the pyvalidator 0.1.1 bug where subtype compatibility was
+# checked with swapped arguments, rejecting every typed IPC benchmark.
+TYPED_DOMAIN = """(define (domain transport)
+  (:requirements :strips :typing)
+  (:types vehicle cargo - object
+          truck plane - vehicle)
+  (:predicates (parked ?v - vehicle) (stored ?c - cargo))
+  (:action start :parameters (?v - vehicle)
+    :precondition (parked ?v)
+    :effect (not (parked ?v))))"""
+
+TYPED_PROBLEM = """(define (problem transport-p1) (:domain transport)
+  (:objects truck1 - truck plane1 - plane box1 - cargo)
+  (:init (parked truck1) (parked plane1) (stored box1))
+  (:goal (and (not (parked truck1)) (not (parked plane1)))))"""
+
+TYPED_SUBTYPE_PLAN = """(start truck1)
+(start plane1)"""
+
+TYPED_SIBLING_PLAN = """(start box1)"""
+
 passed = 0
 failed = 0
 
@@ -152,6 +174,19 @@ def test_state_transition_numeric():
     # Should show numeric change (fuel decreased)
     assert "numeric" in step.get("changes", {}), f"Expected numeric changes: {step}"
 test("get_state_transition (numeric)", test_state_transition_numeric)
+
+def test_typed_hierarchy_subtype_accepted():
+    result = validate_pddl_syntax(TYPED_DOMAIN, TYPED_PROBLEM, TYPED_SUBTYPE_PLAN)
+    assert "error" not in result, f"Error: {result.get('message', result)}"
+    assert result["valid"] is True, f"Subtype plan rejected: {result.get('report')}"
+test("validate_pddl_syntax (typed hierarchy, subtype accepted)", test_typed_hierarchy_subtype_accepted)
+
+def test_typed_hierarchy_sibling_rejected():
+    result = validate_pddl_syntax(TYPED_DOMAIN, TYPED_PROBLEM, TYPED_SIBLING_PLAN)
+    assert "error" not in result, f"Error: {result.get('message', result)}"
+    assert result["valid"] is False, "Sibling-type plan should have been rejected"
+    assert "vehicle" in result["report"] and "box1" in result["report"]
+test("validate_pddl_syntax (typed hierarchy, sibling rejected)", test_typed_hierarchy_sibling_rejected)
 
 def test_malformed_pddl():
     result = validate_pddl_syntax("(define (domain broken))")

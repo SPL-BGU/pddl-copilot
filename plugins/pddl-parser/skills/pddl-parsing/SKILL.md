@@ -47,13 +47,15 @@ LLMs fail at tracking predicate sets through action sequences. Always use the pa
 
 All tools accept either inline PDDL content strings or absolute file paths. State parameters accept `"initial"` or a JSON array like `["(clear a)", "(on a b)"]`.
 
+Action strings are case-insensitive and accept several forms: `(pick-up a)`, `pick-up a`, and `pick-up(a, b)`. Inline `;` comments are stripped. Unknown action/object names return a fuzzy "did you mean" suggestion.
+
 ### Parser backends
 
-Both backends are always available. Default (null) auto-selects with fallback.
-- **pddl-plus-parser** (default): STRIPS + numeric fluents (`:functions`, `increase`, `decrease`)
-- **unified-planning**: STRIPS + ADL features (`:conditional-effects`, `:existential-preconditions`, `:universal-preconditions`, `:disjunctive-preconditions`)
+Both backends are always available. Default (null) auto-routes by feature: domains declaring `:functions` (numeric fluents) go to pddl-plus-parser, all others to unified-planning. Auto-selection falls back to the other backend on exception.
+- **unified-planning** (default for classical): STRIPS + ADL features (`:conditional-effects`, `:existential-preconditions`, `:universal-preconditions`, `:disjunctive-preconditions`). Handles bare atomic preconditions natively.
+- **pddl-plus-parser** (default for numeric): STRIPS + numeric fluents (`:functions`, `increase`, `decrease`).
 
-If the domain uses numeric fluents, pass `parser="pddl-plus-parser"`. If it uses ADL/conditional effects, pass `parser="unified-planning"`. For plain STRIPS, either works — let auto-select handle it.
+Let auto-select handle backend choice. Pass `parser=` explicitly only when overriding for debugging or forcing a specific backend.
 
 ### Cross-plugin workflows (optional)
 

@@ -17,13 +17,52 @@ from typing import Any, Optional, Protocol
 MAX_GROUNDING_ATTEMPTS = 10_000
 
 
-def parse_action_call(action_str: str) -> tuple:
-    """Parse '(pick-up a)' into ('pick-up', ['a']). Returns (name, object_list)."""
-    s = action_str.strip()
+def normalize_action_input(action_str: str) -> tuple:
+    """Parse a grounded action call into (name, args).
+
+    Accepts:
+      - "(pick-up a)"           canonical s-expression
+      - "pick-up a"             bare whitespace form
+      - "pick-up(a, b)"         functional form, comma- or space-separated
+      - Any of the above with a trailing "; comment"
+      - Any of the above with tabs, newlines, or extra spaces
+
+    Name and args are returned verbatim. Case-insensitive matching against the
+    domain's canonical casing is the backend's responsibility.
+    """
+    s = str(action_str).split(";", 1)[0].strip()
+    if not s:
+        raise ValueError("Empty action input")
+
+    s = re.sub(r"\s+", " ", s)
+
     if s.startswith("(") and s.endswith(")"):
-        s = s[1:-1]
+        s = s[1:-1].strip()
+
+    m = re.match(r"^([A-Za-z][A-Za-z0-9_\-]*)\s*\((.*)\)$", s)
+    if m:
+        name = m.group(1)
+        args_blob = m.group(2).strip()
+        args = [a for a in re.split(r"[,\s]+", args_blob) if a]
+        return name, args
+
     parts = s.split()
+    if not parts:
+        raise ValueError(f"Could not parse action: {action_str!r}")
     return parts[0], parts[1:]
+
+
+def suggest_close_match(name: str, candidates: list) -> str:
+    """Return a suggestion suffix like ' Did you mean: pick-up, put-down?' or ''."""
+    import difflib
+    matches = difflib.get_close_matches(name, candidates, n=3, cutoff=0.6)
+    if not matches:
+        return ""
+    return f" Did you mean: {', '.join(matches)}?"
+
+
+def canonicalize_action(name: str, args: list) -> str:
+    return f"({name})" if not args else f"({name} {' '.join(args)})"
 
 
 def compact_pddl(s: str) -> str:
