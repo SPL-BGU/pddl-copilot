@@ -2,6 +2,9 @@
 # mcp_protocol_test.sh — Verify each plugin's MCP server registers all expected tools
 # via the MCP stdio protocol. Catches @mcp.tool() decorator / FastMCP wiring bugs
 # that direct Python imports would miss.
+#
+# Skills-only plugins (no .mcp.json) are skipped: there is no server to probe.
+# Each per-plugin block below gates on `-f $PLUGIN_DIR/.mcp.json` before running.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -52,28 +55,32 @@ echo "--- pddl-solver (Tier 1) ---"
 SOLVER_DIR="$REPO_ROOT/plugins/pddl-solver"
 SOLVER_VENV="$SOLVER_DIR/.venv"
 
-# Ensure venv exists
-if [ ! -d "$SOLVER_VENV" ]; then
-    echo "  Setting up solver venv..."
-    if command -v uv &>/dev/null; then
-        uv venv "$SOLVER_VENV"
-        uv pip install --python "$SOLVER_VENV/bin/python3" -r "$SOLVER_DIR/requirements.txt"
-    else
-        python3 -m venv "$SOLVER_VENV"
-        "$SOLVER_VENV/bin/pip" install --quiet -r "$SOLVER_DIR/requirements.txt"
-    fi
-fi
-
-SOLVER_PYTHON="$SOLVER_VENV/bin/python3"
-echo -n "  MCP tools/list...       "
-if $SOLVER_PYTHON -c "$MCP_LIST_SCRIPT" \
-    "classic_planner,numeric_planner,save_plan" \
-    "$SOLVER_PYTHON" "$SOLVER_DIR/server/solver_server.py" \
-    2>"$ERRLOG" | grep -q "ALL_TOOLS_OK"; then
-    pass "all 3 tools registered"
+if [ ! -f "$SOLVER_DIR/.mcp.json" ]; then
+    echo "  skipped — no .mcp.json (skills-only plugin)"
 else
-    fail "pddl-solver tools/list"
-    cat "$ERRLOG" >&2
+    # Ensure venv exists
+    if [ ! -d "$SOLVER_VENV" ]; then
+        echo "  Setting up solver venv..."
+        if command -v uv &>/dev/null; then
+            uv venv "$SOLVER_VENV"
+            uv pip install --python "$SOLVER_VENV/bin/python3" -r "$SOLVER_DIR/requirements.txt"
+        else
+            python3 -m venv "$SOLVER_VENV"
+            "$SOLVER_VENV/bin/pip" install --quiet -r "$SOLVER_DIR/requirements.txt"
+        fi
+    fi
+
+    SOLVER_PYTHON="$SOLVER_VENV/bin/python3"
+    echo -n "  MCP tools/list...       "
+    if $SOLVER_PYTHON -c "$MCP_LIST_SCRIPT" \
+        "classic_planner,numeric_planner,save_plan" \
+        "$SOLVER_PYTHON" "$SOLVER_DIR/server/solver_server.py" \
+        2>"$ERRLOG" | grep -q "ALL_TOOLS_OK"; then
+        pass "all 3 tools registered"
+    else
+        fail "pddl-solver tools/list"
+        cat "$ERRLOG" >&2
+    fi
 fi
 
 # ---------------------------------------------------------------------------
@@ -85,28 +92,32 @@ echo "--- pddl-validator (Tier 1) ---"
 VALIDATOR_DIR="$REPO_ROOT/plugins/pddl-validator"
 VALIDATOR_VENV="$VALIDATOR_DIR/.venv"
 
-# Ensure venv exists
-if [ ! -d "$VALIDATOR_VENV" ]; then
-    echo "  Setting up validator venv..."
-    if command -v uv &>/dev/null; then
-        uv venv "$VALIDATOR_VENV"
-        uv pip install --python "$VALIDATOR_VENV/bin/python3" -r "$VALIDATOR_DIR/requirements.txt"
-    else
-        python3 -m venv "$VALIDATOR_VENV"
-        "$VALIDATOR_VENV/bin/pip" install --quiet -r "$VALIDATOR_DIR/requirements.txt"
-    fi
-fi
-
-VALIDATOR_PYTHON="$VALIDATOR_VENV/bin/python3"
-echo -n "  MCP tools/list...       "
-if $VALIDATOR_PYTHON -c "$MCP_LIST_SCRIPT" \
-    "validate_pddl_syntax,get_state_transition" \
-    "$VALIDATOR_PYTHON" "$VALIDATOR_DIR/server/validator_server.py" \
-    2>"$ERRLOG" | grep -q "ALL_TOOLS_OK"; then
-    pass "all 2 tools registered"
+if [ ! -f "$VALIDATOR_DIR/.mcp.json" ]; then
+    echo "  skipped — no .mcp.json (skills-only plugin)"
 else
-    fail "pddl-validator tools/list"
-    cat "$ERRLOG" >&2
+    # Ensure venv exists
+    if [ ! -d "$VALIDATOR_VENV" ]; then
+        echo "  Setting up validator venv..."
+        if command -v uv &>/dev/null; then
+            uv venv "$VALIDATOR_VENV"
+            uv pip install --python "$VALIDATOR_VENV/bin/python3" -r "$VALIDATOR_DIR/requirements.txt"
+        else
+            python3 -m venv "$VALIDATOR_VENV"
+            "$VALIDATOR_VENV/bin/pip" install --quiet -r "$VALIDATOR_DIR/requirements.txt"
+        fi
+    fi
+
+    VALIDATOR_PYTHON="$VALIDATOR_VENV/bin/python3"
+    echo -n "  MCP tools/list...       "
+    if $VALIDATOR_PYTHON -c "$MCP_LIST_SCRIPT" \
+        "validate_pddl_syntax,get_state_transition" \
+        "$VALIDATOR_PYTHON" "$VALIDATOR_DIR/server/validator_server.py" \
+        2>"$ERRLOG" | grep -q "ALL_TOOLS_OK"; then
+        pass "all 2 tools registered"
+    else
+        fail "pddl-validator tools/list"
+        cat "$ERRLOG" >&2
+    fi
 fi
 
 # ---------------------------------------------------------------------------

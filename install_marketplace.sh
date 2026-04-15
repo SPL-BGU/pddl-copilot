@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install_marketplace.sh — Configure all marketplace plugins for Cursor and Antigravity.
 #
-# Auto-discovers plugins by scanning plugins/*/.mcp.json.
+# Auto-discovers plugins by scanning plugins/*/ for either .mcp.json or skills/.
 # Generates MCP configs and symlinks skills for the target tools.
 #
 # Usage:
@@ -28,14 +28,14 @@ declare -a PLUGIN_NAMES=()
 declare -a PLUGIN_PATHS=()
 
 for plugin_dir in "$PLUGINS_DIR"/*/; do
-    if [ -f "${plugin_dir}.mcp.json" ]; then
+    if [ -f "${plugin_dir}.mcp.json" ] || [ -d "${plugin_dir}skills" ]; then
         PLUGIN_NAMES+=("$(basename "$plugin_dir")")
         PLUGIN_PATHS+=("$plugin_dir")
     fi
 done
 
 if [ ${#PLUGIN_NAMES[@]} -eq 0 ]; then
-    echo "No plugins found in $PLUGINS_DIR (looking for .mcp.json files)." >&2
+    echo "No plugins found in $PLUGINS_DIR (looking for .mcp.json or skills/)." >&2
     exit 1
 fi
 
@@ -51,13 +51,21 @@ build_combined_mcp_simple() {
 
     local target_tool="${1:-}"
 
-    # Collect all plugin .mcp.json paths and resolve them
+    # Collect all plugin .mcp.json paths and resolve them (skip skills-only plugins)
     local mcp_files=()
     local plugin_paths_clean=()
     for i in "${!PLUGIN_NAMES[@]}"; do
-        mcp_files+=("${PLUGIN_PATHS[$i]}.mcp.json")
-        plugin_paths_clean+=("${PLUGIN_PATHS[$i]%/}")
+        local mcp_file="${PLUGIN_PATHS[$i]}.mcp.json"
+        if [ -f "$mcp_file" ]; then
+            mcp_files+=("$mcp_file")
+            plugin_paths_clean+=("${PLUGIN_PATHS[$i]%/}")
+        fi
     done
+
+    if [ ${#mcp_files[@]} -eq 0 ]; then
+        echo '{"mcpServers": {}}'
+        return
+    fi
 
     python3 -c "
 import json, sys, os
