@@ -61,13 +61,17 @@ echo ""
 echo "--- Plugin required files ---"
 for plugin_dir in "$REPO_ROOT"/plugins/*/; do
     plugin_name="$(basename "$plugin_dir")"
-    for required in .mcp.json CLAUDE.md; do
-        if [ -f "$plugin_dir/$required" ]; then
-            pass "$plugin_name/$required"
-        else
-            fail "$plugin_name/$required missing"
-        fi
-    done
+    # CLAUDE.md is mandatory for every plugin
+    if [ -f "$plugin_dir/CLAUDE.md" ]; then
+        pass "$plugin_name/CLAUDE.md"
+    else
+        fail "$plugin_name/CLAUDE.md missing"
+    fi
+    # .mcp.json is required only for plugins that expose MCP tools.
+    # Skills-only plugins (skills/ present, no .mcp.json) are valid.
+    if [ ! -f "$plugin_dir/.mcp.json" ] && [ ! -d "$plugin_dir/skills" ]; then
+        fail "$plugin_name has neither .mcp.json nor skills/ — not a valid plugin"
+    fi
     # .mcp.json must be valid JSON
     if [ -f "$plugin_dir/.mcp.json" ]; then
         if python3 -c "import json, sys; json.load(open(sys.argv[1]))" "$plugin_dir/.mcp.json" 2>/dev/null; then
