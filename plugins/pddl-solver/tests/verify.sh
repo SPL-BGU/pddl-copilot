@@ -167,6 +167,21 @@ def test_env_var_overrides():
     assert rc.returncode == 0, f"env-override subprocess failed: {rc.stderr.strip()}"
 test("env-var overrides (PDDL_TIMEOUT, PDDL_MAX_LOG_CHARS)", test_env_var_overrides)
 
+def test_env_var_invalid_raises():
+    import subprocess
+    server_path = os.path.join(sys.argv[1], "server")
+    code = (
+        "import sys\n"
+        f"sys.path.insert(0, {server_path!r})\n"
+        "import solver_server\n"
+    )
+    env = dict(os.environ, PDDL_TIMEOUT="abc")
+    rc = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    assert rc.returncode != 0, "Import should fail on non-integer PDDL_TIMEOUT"
+    assert "PDDL_TIMEOUT" in rc.stderr, f"ValueError should name PDDL_TIMEOUT: {rc.stderr.strip()}"
+    assert "ValueError" in rc.stderr, f"Expected ValueError, got: {rc.stderr.strip()}"
+test("env-var invalid int raises ValueError naming the var", test_env_var_invalid_raises)
+
 # ---- Summary ----
 print(f"\n{passed + failed} tests: {passed} passed, {failed} failed")
 if failed:

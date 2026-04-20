@@ -79,6 +79,13 @@ for plugin_dir in "$REPO_ROOT"/plugins/*/; do
         else
             fail "$plugin_name/.mcp.json invalid JSON"
         fi
+        # MCP plugins must ship pre-approved permissions
+        # (see .claude/rules/marketplace.md#adding-a-new-plugin-checklist)
+        if [ -f "$plugin_dir/.claude/settings.json" ]; then
+            pass "$plugin_name/.claude/settings.json present"
+        else
+            fail "$plugin_name has .mcp.json but missing .claude/settings.json"
+        fi
     fi
     # settings.json must be valid JSON if it exists
     settings="$plugin_dir/.claude/settings.json"
