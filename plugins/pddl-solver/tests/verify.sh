@@ -182,6 +182,19 @@ def test_env_var_invalid_raises():
     assert "ValueError" in rc.stderr, f"Expected ValueError, got: {rc.stderr.strip()}"
 test("env-var invalid int raises ValueError naming the var", test_env_var_invalid_raises)
 
+def test_classic_planner_no_cwd_pollution():
+    # Regression: Fast Downward writes `output.sas` to CWD. The server must pin
+    # CWD to its request-scoped temp dir so solves work in read-only envs
+    # (e.g., Antigravity container) and do not leave cruft in the caller's CWD.
+    stale = os.path.join(os.getcwd(), "output.sas")
+    if os.path.exists(stale):
+        os.remove(stale)
+    result = classic_planner(DOMAIN, PROBLEM)
+    assert "error" not in result, result
+    assert not os.path.exists(stale), \
+        f"classic_planner left output.sas in CWD — solver not chdir'ing into its request dir"
+test("classic_planner leaves CWD clean", test_classic_planner_no_cwd_pollution)
+
 # ---- Summary ----
 print(f"\n{passed + failed} tests: {passed} passed, {failed} failed")
 if failed:

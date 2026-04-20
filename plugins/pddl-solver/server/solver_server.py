@@ -67,6 +67,20 @@ def _request_dir():
         shutil.rmtree(d, ignore_errors=True)
 
 
+@contextmanager
+def _in_dir(path: str):
+    """Temporarily chdir into `path`. Fast Downward and ENHSP write intermediate
+    files (e.g., `output.sas`) to the current working directory — pin CWD to the
+    writable request-scoped temp dir so the solve works even when the server's
+    original CWD is read-only."""
+    prev = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(prev)
+
+
 def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
     """Write PDDL content to a temp file, or return the existing file path."""
     stripped = content_or_path.strip()
@@ -124,8 +138,8 @@ def _solve(engine_name: str, domain: str, problem: str,
 
         t1 = time.time()
         try:
-            with OneshotPlanner(name=engine_name,
-                                params=params or {}) as planner:
+            with _in_dir(rd), OneshotPlanner(name=engine_name,
+                                             params=params or {}) as planner:
                 result = planner.solve(up_problem, timeout=DEFAULT_TIMEOUT)
         except Exception as e:
             return {"error": True, "message": f"Planner error: {e}"}
