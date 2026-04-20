@@ -1,6 +1,6 @@
 {
   "name": "pddl-solver",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Solve PDDL planning problems — supports classical and numeric (PDDL 2.1) domains. Pure pip install, no Docker.",
   "author": {
     "name": "SPL-BGU"
