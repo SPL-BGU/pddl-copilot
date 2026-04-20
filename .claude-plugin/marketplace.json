@@ -29,7 +29,7 @@
         "name": "SPL-BGU"
       },
       "license": "MIT",
-      "version": "2.1.0",
+      "version": "2.1.1",
       "source": "./plugins/pddl-validator",
       "homepage": "https://github.com/SPL-BGU/pddl-copilot",
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
