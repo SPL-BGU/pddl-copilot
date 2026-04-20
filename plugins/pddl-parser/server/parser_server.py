@@ -22,6 +22,17 @@ import uuid
 mcp = FastMCP("pddl-parser")
 
 # ---------------------------------------------------------------------------
+# Configuration (overridable via environment variables)
+# ---------------------------------------------------------------------------
+_raw_max_applicable = os.environ.get("PDDL_MAX_APPLICABLE_ACTIONS", "50")
+try:
+    DEFAULT_MAX_APPLICABLE_ACTIONS = int(_raw_max_applicable)
+except ValueError:
+    raise ValueError(
+        f"PDDL_MAX_APPLICABLE_ACTIONS must be an integer, got: {_raw_max_applicable!r}"
+    ) from None
+
+# ---------------------------------------------------------------------------
 # Backend initialization (lazy imports — server works with any subset)
 # ---------------------------------------------------------------------------
 
@@ -669,7 +680,7 @@ def get_applicable_actions(
     domain: Annotated[str, Field(description="PDDL domain content string or absolute file path.")],
     problem: Annotated[str, Field(description="PDDL problem content string or absolute file path.")],
     state: Annotated[str, Field(description="Either 'initial' for the initial state, or a JSON array of predicate strings.")] = "initial",
-    max_results: Annotated[int, Field(description="Maximum number of applicable actions to return.")] = 50,
+    max_results: Annotated[int, Field(description="Maximum number of applicable actions to return.")] = DEFAULT_MAX_APPLICABLE_ACTIONS,
     parser: Annotated[Optional[str], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
 ) -> dict:
     """Enumerates all applicable grounded actions in a given state by checking every possible grounding against the state's preconditions.

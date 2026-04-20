@@ -35,7 +35,7 @@ Full step-by-step guide: [docs/contributing.md](../../docs/contributing.md#creat
 
 Enforcement points (agent must verify all):
 1. Plugin is fully self-contained under `plugins/<name>/`
-2. Has `.mcp.json` (with `${CLAUDE_PLUGIN_ROOT}`), `CLAUDE.md`, `.claude/settings.json`, at least one skill
+2. Has `CLAUDE.md` and at least one component (a `skills/` directory, an MCP server, or both). `.mcp.json` (with `${CLAUDE_PLUGIN_ROOT}`) and `.claude/settings.json` are required only when the plugin exposes MCP tools; skills-only plugins omit both.
 3. Registered in both `.claude-plugin/marketplace.json` and `.cursor-plugin/marketplace.json`
 4. Architecture tier is the simplest possible (Tier 1 preferred)
 

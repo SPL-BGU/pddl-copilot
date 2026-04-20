@@ -6,6 +6,7 @@ All predicate strings use PDDL s-expression format: (pred obj1 obj2)
 
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, Protocol
@@ -14,7 +15,13 @@ from typing import Any, Optional, Protocol
 # Shared constants and utilities
 # ---------------------------------------------------------------------------
 
-MAX_GROUNDING_ATTEMPTS = 10_000
+_raw_max_grounding = os.environ.get("PDDL_MAX_GROUNDING_ATTEMPTS", "10000")
+try:
+    MAX_GROUNDING_ATTEMPTS = int(_raw_max_grounding)
+except ValueError:
+    raise ValueError(
+        f"PDDL_MAX_GROUNDING_ATTEMPTS must be an integer, got: {_raw_max_grounding!r}"
+    ) from None
 
 
 def normalize_action_input(action_str: str) -> tuple:

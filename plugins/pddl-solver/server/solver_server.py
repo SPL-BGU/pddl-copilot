@@ -24,7 +24,22 @@ mcp = FastMCP("pddl-solver")
 # Configuration (overridable via environment variables)
 # ---------------------------------------------------------------------------
 TEMP_DIR = os.environ.get("PDDL_TEMP_DIR", "/tmp/pddl")
-DEFAULT_TIMEOUT = int(os.environ.get("PDDL_TIMEOUT", "120"))
+
+_raw_timeout = os.environ.get("PDDL_TIMEOUT", "120")
+try:
+    DEFAULT_TIMEOUT = int(_raw_timeout)
+except ValueError:
+    raise ValueError(
+        f"PDDL_TIMEOUT must be an integer, got: {_raw_timeout!r}"
+    ) from None
+
+_raw_max_log = os.environ.get("PDDL_MAX_LOG_CHARS", "3000")
+try:
+    MAX_FAILURE_LOG_CHARS = int(_raw_max_log)
+except ValueError:
+    raise ValueError(
+        f"PDDL_MAX_LOG_CHARS must be an integer, got: {_raw_max_log!r}"
+    ) from None
 DEFAULT_PLANS_DIR = os.path.expanduser("~/plans")
 
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -50,6 +65,20 @@ def _request_dir():
         yield d
     finally:
         shutil.rmtree(d, ignore_errors=True)
+
+
+@contextmanager
+def _in_dir(path: str):
+    """Temporarily chdir into `path`. Fast Downward and ENHSP write intermediate
+    files (e.g., `output.sas`) to the current working directory — pin CWD to the
+    writable request-scoped temp dir so the solve works even when the server's
+    original CWD is read-only."""
+    prev = os.getcwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(prev)
 
 
 def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
@@ -109,8 +138,8 @@ def _solve(engine_name: str, domain: str, problem: str,
 
         t1 = time.time()
         try:
-            with OneshotPlanner(name=engine_name,
-                                params=params or {}) as planner:
+            with _in_dir(rd), OneshotPlanner(name=engine_name,
+                                             params=params or {}) as planner:
                 result = planner.solve(up_problem, timeout=DEFAULT_TIMEOUT)
         except Exception as e:
             return {"error": True, "message": f"Planner error: {e}"}
@@ -144,7 +173,7 @@ def _solve(engine_name: str, domain: str, problem: str,
             "plan": [],
             "solve_time": solve_time,
             "status": str(status),
-            "log": log[-3000:] if log else "",
+            "log": log[-MAX_FAILURE_LOG_CHARS:] if log else "",
             "note": "Planner ran but did not find a plan.",
         }
 

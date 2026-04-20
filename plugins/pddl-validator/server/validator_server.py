@@ -74,13 +74,15 @@ def validate_pddl_syntax(
     domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
     problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem.")] = None,
     plan: Annotated[str, Field(description="Plan content string or absolute file path for the action sequence to validate.")] = None,
+    verbose: Annotated[bool, Field(description="When True (default), returns the full pyvalidator 'details' dict alongside the summary. Set False to drop 'details' for size-sensitive callers.")] = True,
 ) -> dict:
     """Validates PDDL domains, problems, and plans using pyvalidator.
     Checks syntax when given domain only, checks problem consistency when given domain+problem,
     and verifies plan correctness when given domain+problem+plan.
     Returns:
-        {"valid": bool, "status": str, "report": str, "details": dict}
-        Error: {"error": True, "message": str}"""
+        verbose=True:  {"valid": bool, "status": str, "report": str, "details": dict}
+        verbose=False: {"valid": bool, "status": str, "report": str}
+        Error:         {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -98,12 +100,14 @@ def validate_pddl_syntax(
         except Exception as e:
             return {"error": True, "message": f"Validation error: {e}"}
 
-        return {
+        out = {
             "valid": result.is_valid,
             "status": result.status,
             "report": result.report(),
-            "details": result.to_json(),
         }
+        if verbose:
+            out["details"] = result.to_json()
+        return out
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
@@ -111,12 +115,14 @@ def get_state_transition(
     domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
     problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
     plan: Annotated[str, Field(description="Plan content string or absolute file path for the solution to simulate.")],
+    verbose: Annotated[bool, Field(description="When True (default), returns the verbose pyvalidator 'report' and 'details' fields alongside the structured steps/trajectory. Set False to drop both for size-sensitive callers.")] = True,
 ) -> dict:
     """Simulates plan execution step-by-step and returns the state after each action.
     Use this to debug a plan or inspect intermediate states. For checking plan validity, use validate_pddl_syntax instead.
     Returns:
-        {"valid": bool, "report": str, "steps": list, "trajectory": list, "details": dict}
-        Error: {"error": True, "message": str}"""
+        verbose=True:  {"valid": bool, "report": str, "steps": list, "trajectory": list, "details": dict}
+        verbose=False: {"valid": bool, "steps": list, "trajectory": list}
+        Error:         {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -170,13 +176,15 @@ def get_state_transition(
                 "numeric_fluents": snap.numeric_fluents,
             })
 
-        return {
+        out = {
             "valid": result.is_valid,
-            "report": result.report(verbose=True),
             "steps": steps,
             "trajectory": trajectory,
-            "details": result.to_json(),
         }
+        if verbose:
+            out["report"] = result.report(verbose=True)
+            out["details"] = result.to_json()
+        return out
 
 
 if __name__ == "__main__":

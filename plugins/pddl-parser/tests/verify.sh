@@ -483,6 +483,24 @@ assert "(<=" in r["normalized"], \
     f"numeric precondition dropped in PDDL output: {r['normalized']}"
 print("OK")
 
+# Test: env-var overrides wire through to module-level constants
+print("TEST:ENV_OVERRIDES:", end="")
+import subprocess
+_server_path = os.path.join(sys.argv[1], "server")
+_code = (
+    "import sys\n"
+    f"sys.path.insert(0, {_server_path!r})\n"
+    "import parser_server, backends\n"
+    "assert parser_server.DEFAULT_MAX_APPLICABLE_ACTIONS == 3, parser_server.DEFAULT_MAX_APPLICABLE_ACTIONS\n"
+    "assert backends.MAX_GROUNDING_ATTEMPTS == 42, backends.MAX_GROUNDING_ATTEMPTS\n"
+)
+_env = dict(os.environ, PDDL_MAX_APPLICABLE_ACTIONS="3", PDDL_MAX_GROUNDING_ATTEMPTS="42")
+_rc = subprocess.run([sys.executable, "-c", _code], env=_env, capture_output=True, text=True)
+if _rc.returncode != 0:
+    print(f"FAIL:{_rc.stderr.strip()}")
+    sys.exit(1)
+print("OK")
+
 print("TEST:DONE")
 PYEOF
 
@@ -501,7 +519,8 @@ for TEST_NAME in IMPORT TRAJECTORY ERROR_HANDLING INSPECT_DOMAIN INSPECT_PROBLEM
     FLEXIBLE_ACTION_SEXPR FLEXIBLE_ACTION_BARE FLEXIBLE_ACTION_FUNC \
     FLEXIBLE_ACTION_CASE FLEXIBLE_ACTION_COMMENT FUZZY_SUGGESTION \
     FLEXIBLE_TRAJECTORY_MIXED \
-    NORMALIZE_BARE_PRECONDITION NORMALIZE_NUMERIC_ROUTING NUMERIC_ROUTING_PDDL_OUTPUT; do
+    NORMALIZE_BARE_PRECONDITION NORMALIZE_NUMERIC_ROUTING NUMERIC_ROUTING_PDDL_OUTPUT \
+    ENV_OVERRIDES; do
 
     LABEL=$(echo "$TEST_NAME" | tr '_' ' ' | tr '[:upper:]' '[:lower:]')
     printf "%-40s" "$LABEL..."
