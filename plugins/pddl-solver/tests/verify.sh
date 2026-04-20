@@ -152,6 +152,21 @@ def test_bad_pddl():
     assert result.get("error") is True
 test("classic_planner (malformed PDDL)", test_bad_pddl)
 
+def test_env_var_overrides():
+    import subprocess
+    server_path = os.path.join(sys.argv[1], "server")
+    code = (
+        "import sys\n"
+        f"sys.path.insert(0, {server_path!r})\n"
+        "import solver_server\n"
+        "assert solver_server.DEFAULT_TIMEOUT == 999, solver_server.DEFAULT_TIMEOUT\n"
+        "assert solver_server.MAX_FAILURE_LOG_CHARS == 500, solver_server.MAX_FAILURE_LOG_CHARS\n"
+    )
+    env = dict(os.environ, PDDL_TIMEOUT="999", PDDL_MAX_LOG_CHARS="500")
+    rc = subprocess.run([sys.executable, "-c", code], env=env, capture_output=True, text=True)
+    assert rc.returncode == 0, f"env-override subprocess failed: {rc.stderr.strip()}"
+test("env-var overrides (PDDL_TIMEOUT, PDDL_MAX_LOG_CHARS)", test_env_var_overrides)
+
 # ---- Summary ----
 print(f"\n{passed + failed} tests: {passed} passed, {failed} failed")
 if failed:
