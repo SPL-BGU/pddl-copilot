@@ -144,10 +144,41 @@ def test_invalid_plan():
     assert "error" not in result, f"Error: {result.get('message', result)}"
     assert result["valid"] is False, "Expected invalid plan"
     assert result["status"] == "INVALID"
-    # Should have diagnostic details
-    assert "details" in result
+    # default verbose=True still returns the pyvalidator 'details' dict
+    assert "details" in result, "Default call should include 'details'"
     assert result["details"]["status"] == "INVALID"
 test("validate_pddl_syntax (invalid plan)", test_invalid_plan)
+
+def test_validate_verbose_default_has_details():
+    result = validate_pddl_syntax(DOMAIN, PROBLEM, VALID_PLAN)
+    assert set(result.keys()) == {"valid", "status", "report", "details"}, f"Unexpected keys: {result.keys()}"
+test("validate_pddl_syntax (default verbose=True)", test_validate_verbose_default_has_details)
+
+def test_validate_verbose_false_drops_details():
+    result = validate_pddl_syntax(DOMAIN, PROBLEM, VALID_PLAN, verbose=False)
+    assert set(result.keys()) == {"valid", "status", "report"}, f"Unexpected keys: {result.keys()}"
+test("validate_pddl_syntax (verbose=False drops details)", test_validate_verbose_false_drops_details)
+
+def test_invalid_plan_verbose_false_still_diagnosable():
+    result = validate_pddl_syntax(DOMAIN, PROBLEM, INVALID_PLAN, verbose=False)
+    assert "error" not in result, f"Error: {result.get('message', result)}"
+    assert result["valid"] is False
+    assert result["status"] == "INVALID"
+    assert result["report"], "report must be non-empty so failures are diagnosable without details"
+    assert "details" not in result
+test("validate_pddl_syntax (invalid plan, verbose=False)", test_invalid_plan_verbose_false_still_diagnosable)
+
+def test_state_transition_verbose_default_has_report_details():
+    result = get_state_transition(DOMAIN, PROBLEM, VALID_PLAN)
+    assert set(result.keys()) == {"valid", "report", "steps", "trajectory", "details"}, f"Unexpected keys: {result.keys()}"
+test("get_state_transition (default verbose=True)", test_state_transition_verbose_default_has_report_details)
+
+def test_state_transition_verbose_false_slim():
+    result = get_state_transition(DOMAIN, PROBLEM, VALID_PLAN, verbose=False)
+    assert set(result.keys()) == {"valid", "steps", "trajectory"}, f"Unexpected keys: {result.keys()}"
+    assert len(result["trajectory"]) >= 1
+    assert "boolean_fluents" in result["trajectory"][0]
+test("get_state_transition (verbose=False slim, uncapped)", test_state_transition_verbose_false_slim)
 
 def test_numeric_validation():
     result = validate_pddl_syntax(NUMERIC_DOMAIN, NUMERIC_PROBLEM, NUMERIC_PLAN)

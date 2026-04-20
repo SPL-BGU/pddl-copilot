@@ -24,7 +24,22 @@ mcp = FastMCP("pddl-solver")
 # Configuration (overridable via environment variables)
 # ---------------------------------------------------------------------------
 TEMP_DIR = os.environ.get("PDDL_TEMP_DIR", "/tmp/pddl")
-DEFAULT_TIMEOUT = int(os.environ.get("PDDL_TIMEOUT", "120"))
+
+_raw_timeout = os.environ.get("PDDL_TIMEOUT", "120")
+try:
+    DEFAULT_TIMEOUT = int(_raw_timeout)
+except ValueError:
+    raise ValueError(
+        f"PDDL_TIMEOUT must be an integer, got: {_raw_timeout!r}"
+    ) from None
+
+_raw_max_log = os.environ.get("PDDL_MAX_LOG_CHARS", "3000")
+try:
+    MAX_FAILURE_LOG_CHARS = int(_raw_max_log)
+except ValueError:
+    raise ValueError(
+        f"PDDL_MAX_LOG_CHARS must be an integer, got: {_raw_max_log!r}"
+    ) from None
 DEFAULT_PLANS_DIR = os.path.expanduser("~/plans")
 
 os.makedirs(TEMP_DIR, exist_ok=True)
@@ -144,7 +159,7 @@ def _solve(engine_name: str, domain: str, problem: str,
             "plan": [],
             "solve_time": solve_time,
             "status": str(status),
-            "log": log[-3000:] if log else "",
+            "log": log[-MAX_FAILURE_LOG_CHARS:] if log else "",
             "note": "Planner ran but did not find a plan.",
         }
 
