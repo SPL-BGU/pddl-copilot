@@ -182,6 +182,21 @@ def test_env_var_invalid_raises():
     assert "ValueError" in rc.stderr, f"Expected ValueError, got: {rc.stderr.strip()}"
 test("env-var invalid int raises ValueError naming the var", test_env_var_invalid_raises)
 
+def test_no_stdout_pollution():
+    # Regression: unified_planning.engines.factory writes a credits banner to
+    # sys.stdout by default, which corrupts the MCP stdio JSONRPC channel.
+    # The server suppresses this via get_environment().credits_stream = None.
+    import io, contextlib
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        result = classic_planner(DOMAIN, PROBLEM)
+        _ = numeric_planner(NUMERIC_DOMAIN, NUMERIC_PROBLEM)
+    assert "error" not in result, result
+    captured = buf.getvalue()
+    assert captured == "", \
+        f"Planner call wrote to stdout (would corrupt MCP JSONRPC): {captured!r}"
+test("planners leave stdout clean (no MCP pollution)", test_no_stdout_pollution)
+
 def test_classic_planner_no_cwd_pollution():
     # Regression: Fast Downward writes `output.sas` to CWD. The server must pin
     # CWD to its request-scoped temp dir so solves work in read-only envs

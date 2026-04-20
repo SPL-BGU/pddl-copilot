@@ -15,8 +15,12 @@ import time
 import uuid
 
 from unified_planning.io import PDDLReader
-from unified_planning.shortcuts import OneshotPlanner
+from unified_planning.shortcuts import OneshotPlanner, get_environment
 import unified_planning.engines.results as up_results
+
+# Silence the UP factory credits banner — it writes ANSI-coloured text to
+# sys.stdout, which corrupts the MCP stdio JSONRPC channel on the client.
+get_environment().credits_stream = None
 
 mcp = FastMCP("pddl-solver")
 
