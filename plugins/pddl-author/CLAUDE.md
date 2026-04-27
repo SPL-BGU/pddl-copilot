@@ -11,7 +11,7 @@ Two skills:
 These skills call MCP tools from sibling plugins. They are **soft dependencies** — the skills detect missing tools and report them to the user rather than failing silently. For full functionality, install:
 
 - `pddl-validator` (required) — `validate_pddl_syntax`, `get_state_transition`
-- `pddl-parser` (required) — `normalize_pddl`, `inspect_domain`, `inspect_problem`, `get_trajectory`
+- `pddl-parser` (required) — `normalize_pddl`, `inspect_domain`, `inspect_problem`, `get_trajectory`, `get_applicable_actions`, `check_applicable`
 - `pddl-solver` (recommended for `pddl-fixing`) — `classic_planner`, `numeric_planner`
 
 The author plugin itself ships zero binaries and zero Python deps.
