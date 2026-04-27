@@ -14,6 +14,7 @@ This repository is a Claude Code plugin marketplace. Each plugin lives in its ow
 - **pddl-solver** (`plugins/pddl-solver/`) — PDDL planning using Fast Downward (via up-fast-downward) and ENHSP (via up-enhsp). Pure pip, no Docker.
 - **pddl-validator** (`plugins/pddl-validator/`) — PDDL validation and state transition simulation using pyvalidator. Pure pip, no Docker.
 - **pddl-parser** (`plugins/pddl-parser/`) — PDDL parsing and structured trajectory generation with dual-backend support: pddl-plus-parser (default) and unified-planning. Pure pip, no Docker.
+- **pddl-author** (`plugins/pddl-author/`) — Authoring and iterative-fix skills (no MCP server). Drafts PDDL from NL descriptions and fixes via sibling plugins as ground truth. Pure skill.
 
 ## Ollama MCP Bridge
 

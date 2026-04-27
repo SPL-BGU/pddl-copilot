@@ -50,6 +50,20 @@
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
       "keywords": ["pddl", "parser", "trajectory", "state-transition", "introspection", "applicability"]
+    },
+    {
+      "name": "pddl-author",
+      "description": "Author PDDL domains and problems from natural-language descriptions, then iteratively fix them using sibling plugins (validator, parser, solver) as ground truth. Pure skill, no MCP server.",
+      "author": {
+        "name": "SPL-BGU"
+      },
+      "license": "MIT",
+      "version": "0.1.0",
+      "source": "./plugins/pddl-author",
+      "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+      "repository": "https://github.com/SPL-BGU/pddl-copilot",
+      "category": "planning",
+      "keywords": ["pddl", "authoring", "domain-design", "natural-language", "iterative-fix"]
     }
   ]
 }
