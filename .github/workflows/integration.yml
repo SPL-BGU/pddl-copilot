@@ -19,7 +19,7 @@ jobs:
           python-version: "3.11"
 
       - name: Run static checks
-        run: bash tests/static_checks.sh
+        run: python3 tests/static_checks.py
 
   pddl-validator-tests:
     name: pddl-validator Tests (Tier 1)
@@ -37,7 +37,7 @@ jobs:
         run: pip install uv
 
       - name: Test pddl-validator
-        run: bash plugins/pddl-validator/tests/verify.sh
+        run: python3 plugins/pddl-validator/tests/verify.py
 
   mcp-protocol:
     name: MCP Protocol Smoke Tests
@@ -55,7 +55,7 @@ jobs:
         run: pip install uv
 
       - name: MCP tools/list validation
-        run: bash tests/mcp_protocol_test.sh
+        run: python3 tests/mcp_protocol_test.py
 
   pddl-parser-tests:
     name: pddl-parser Tests (Tier 1)
@@ -73,7 +73,7 @@ jobs:
         run: pip install uv
 
       - name: Test pddl-parser
-        run: bash plugins/pddl-parser/tests/verify.sh
+        run: python3 plugins/pddl-parser/tests/verify.py
 
   pddl-solver-tests:
     name: pddl-solver Tests (Tier 1)
@@ -96,4 +96,4 @@ jobs:
         run: pip install uv
 
       - name: Test pddl-solver
-        run: bash plugins/pddl-solver/tests/verify.sh
+        run: python3 plugins/pddl-solver/tests/verify.py

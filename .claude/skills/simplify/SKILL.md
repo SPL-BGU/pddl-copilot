@@ -15,4 +15,4 @@ If no specific target is given, review the most recent changes (check git diff o
 Key reference files for convention review:
 - plugins/pddl-solver/server/solver_server.py — MCP server patterns
 - plugins/pddl-solver/scripts/launch-server.sh — Launch script patterns
-- plugins/pddl-solver/tests/verify.sh — Smoke test patterns
+- plugins/pddl-solver/tests/verify.py — Smoke test patterns

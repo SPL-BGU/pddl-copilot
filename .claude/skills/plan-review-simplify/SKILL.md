@@ -60,7 +60,7 @@ Do NOT proceed until approved.
 
 ### Phase 5: Execute
 Execute steps in order. After completion:
-1. Run the affected plugin's `tests/verify.sh`
+1. Run the affected plugin's `tests/verify.py`
 2. Run `shellcheck` on any new or modified `.sh` files (if shellcheck is available)
 3. Summarize changes, key decisions, validation results
 

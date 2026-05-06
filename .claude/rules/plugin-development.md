@@ -24,7 +24,7 @@ All MCP servers must use FastMCP, content-or-path inputs, stateless tools, error
 Every SKILL.md must have YAML frontmatter (`name`, `description`), lead with mandatory rules, document all tools, and include error handling guidance. See [docs/architecture.md](../../docs/architecture.md#skill-conventions) for details.
 
 ### Verification requirements
-1. **Every plugin must have `tests/verify.sh`**: Smoke tests for all MCP tools. Starts the server natively and exercises each tool.
+1. **Every plugin must have `tests/verify.py`**: Smoke tests for all MCP tools. Starts the server natively and exercises each tool.
 2. **Test every declared tool**: If `.mcp.json` exposes 5 tools, the verify script must test all 5.
 3. **Inline test data**: Do not depend on external fixture files. Define test data in the verify script.
 4. **Run verification before committing server changes**: This is the equivalent of "tests must pass".

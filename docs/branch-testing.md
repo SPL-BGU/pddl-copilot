@@ -32,12 +32,12 @@ The installer resolves absolute paths from wherever you cloned, so it works rega
 
 ```bash
 # Static checks
-bash tests/static_checks.sh
+python3 tests/static_checks.py
 
 # Plugin tests
-bash plugins/pddl-solver/tests/verify.sh
-bash plugins/pddl-validator/tests/verify.sh
+python3 plugins/pddl-solver/tests/verify.py
+python3 plugins/pddl-validator/tests/verify.py
 
 # MCP protocol test
-bash tests/mcp_protocol_test.sh
+python3 tests/mcp_protocol_test.py
 ```

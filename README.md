@@ -188,7 +188,7 @@ pddl-copilot/
 │   │   ├── server/solver_server.py
 │   │   ├── skills/pddl-planning/
 │   │   ├── scripts/launch-server.sh
-│   │   └── tests/verify.sh
+│   │   └── tests/verify.py
 │   ├── pddl-validator/        # Validation plugin
 │   │   ├── .mcp.json
 │   │   ├── CLAUDE.md
@@ -196,7 +196,7 @@ pddl-copilot/
 │   │   ├── server/validator_server.py
 │   │   ├── skills/pddl-validation/
 │   │   ├── scripts/launch-server.sh
-│   │   └── tests/verify.sh
+│   │   └── tests/verify.py
 │   └── pddl-parser/           # Parsing plugin (pure Python)
 │       ├── .mcp.json
 │       ├── CLAUDE.md
@@ -204,10 +204,10 @@ pddl-copilot/
 │       ├── server/parser_server.py
 │       ├── skills/pddl-parsing/
 │       ├── scripts/launch-server.sh
-│       └── tests/verify.sh
+│       └── tests/verify.py
 ├── tests/
-│   ├── static_checks.sh       # Config & structure validation
-│   └── mcp_protocol_test.sh   # MCP stdio protocol smoke tests
+│   ├── static_checks.py       # Config & structure validation
+│   └── mcp_protocol_test.py   # MCP stdio protocol smoke tests
 ├── .github/workflows/
 │   └── integration.yml        # PR gate: static checks + plugin tests + MCP protocol
 ├── install_marketplace.sh     # Unified Cursor/Antigravity installer
