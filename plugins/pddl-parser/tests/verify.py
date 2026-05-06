@@ -500,10 +500,12 @@ def run_test_body() -> int:
 def main() -> int:
     if "--in-venv" in sys.argv:
         return run_test_body()
+    # Always re-exec into the venv python. Comparing sys.executable to
+    # venv_python is unreliable: uv-created venvs symlink to the host python,
+    # so the paths look equal under .resolve() even though sys.path / the
+    # active site-packages are not the venv's.
     venv_python = ensure_venv()
-    if Path(sys.executable).resolve() != venv_python.resolve():
-        os.execv(str(venv_python), [str(venv_python), __file__, "--in-venv"])
-    return run_test_body()
+    os.execv(str(venv_python), [str(venv_python), __file__, "--in-venv"])
 
 
 if __name__ == "__main__":
