@@ -47,11 +47,11 @@ Apply the **minimal change** that resolves the root cause:
 Before committing the fix, review it:
 1. Is this the smallest possible change that fixes the issue?
 2. Does it introduce any new dependencies or complexity?
-3. Could the root cause recur? If so, should we add a check to verify.sh?
+3. Could the root cause recur? If so, should we add a check to verify.py?
 4. Does the fix maintain plugin isolation?
 
 ### Phase 4: Verify
-1. Run the plugin's `tests/verify.sh` to confirm the fix
+1. Run the plugin's `tests/verify.py` to confirm the fix
 2. If the issue was in CI/CD, trigger a manual workflow run: `gh workflow run <workflow>`
 3. Report: what broke, why, what was fixed, verification result
 

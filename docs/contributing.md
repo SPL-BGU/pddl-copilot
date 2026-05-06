@@ -51,7 +51,7 @@ plugins/<your-plugin-name>/
 │   └── <skill-name>/
 │       └── SKILL.md             # User-facing skill definition
 └── tests/
-    └── verify.sh                # Smoke tests for all MCP tools
+    └── verify.py                # Smoke tests for all MCP tools
 ```
 
 ### 3. Create the MCP server definition
@@ -101,7 +101,7 @@ The `source` field must match the plugin directory path exactly.
 
 ```bash
 bash install_marketplace.sh                    # auto-discovery check
-bash plugins/<name>/tests/verify.sh            # smoke test all MCP tools
+python3 plugins/<name>/tests/verify.py         # smoke test all MCP tools
 ```
 
 ### 10. Update documentation
@@ -114,14 +114,14 @@ Each plugin must have a test/verify script that exercises all declared MCP tools
 
 ```bash
 # Plugin smoke tests
-bash plugins/<name>/tests/verify.sh
+python3 plugins/<name>/tests/verify.py
 
 # Static checks — JSON validity, marketplace consistency, Python syntax,
 # settings ↔ server tool alignment
-bash tests/static_checks.sh
+python3 tests/static_checks.py
 
 # MCP protocol test — verifies tools/list via stdio transport
-bash tests/mcp_protocol_test.sh
+python3 tests/mcp_protocol_test.py
 ```
 
 - If `.mcp.json` exposes N tools, the verify script must test all N
