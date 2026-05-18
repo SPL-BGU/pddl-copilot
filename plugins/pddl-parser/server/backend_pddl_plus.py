@@ -275,7 +275,7 @@ class PddlPlusBackend:
 
         return DomainInfo(
             name=parsed_domain.name,
-            requirements=sorted(parsed_domain.requirements),
+            requirements=list(parsed_domain.requirements),
             types=types_info,
             predicates=predicates_info,
             actions=actions_info,

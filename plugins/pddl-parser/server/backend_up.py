@@ -522,13 +522,13 @@ class UnifiedPlanningBackend:
 
     @staticmethod
     def _extract_requirements_from_pddl(domain_path: str) -> Optional[list[str]]:
-        """Extract requirements from PDDL domain file via regex."""
+        """Extract requirements from PDDL domain file via regex, preserving source order."""
         with open(domain_path) as f:
             content = f.read()
         m = re.search(r'\(:requirements\s+(.*?)\)', content, re.DOTALL)
         if not m:
             return None
-        return sorted(m.group(1).split())
+        return m.group(1).split()
 
     def _extract_domain_info(self, up_problem, domain_name: str = None, domain_path: str = None) -> DomainInfo:
         """Extract domain-level info from a parsed UP problem."""
@@ -631,7 +631,7 @@ class UnifiedPlanningBackend:
 
         return DomainInfo(
             name=domain_name or up_problem.name,
-            requirements=sorted(requirements),
+            requirements=list(requirements),
             types=types_info,
             predicates=predicates_info,
             actions=actions_info,

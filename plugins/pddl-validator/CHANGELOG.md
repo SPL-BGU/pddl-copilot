@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.2.0
+
+- **Bug fix (behavior change):** `validate_pddl_syntax` no longer leaks the misleading `"Plan is VALID"` / `"Plan is INVALID"` line in the `report` field when no plan was executed (domain-only or domain+problem calls). pyvalidator's report formatter prints these unconditionally whenever `is_valid=True`; the plugin now strips them from the report when only syntax/consistency was checked. The `valid` boolean is unaffected.
+- **Edge case preserved:** an empty plan (`plan=[]` or empty file) is still validated through the full plan-execution path — correct when the initial state already satisfies the goal, in which case `"Plan is VALID"` is legitimately retained.
+- `validate_pddl_syntax.plan` and `get_state_transition.plan` now accept `list[str]` in addition to the existing `str` (content or path) form. The list is materialized as a newline-joined file internally. Existing callers passing strings are unaffected.
+- Docstring rewrite for `validate_pddl_syntax` clarifies the three modes (syntax / consistency / plan execution) so the tool's broader scope matches its name.
+
 ## 2.1.1
 
 - Bump `pddl-pyvalidator` to `>=0.1.4` to pick up the numeric-goal evaluation fix. Prior versions reported plans as `INVALID` whenever the goal contained a numeric comparison (`<=`, `>=`, `=`), affecting domains like `counters` and `farmland`. Boolean-goal domains were unaffected. No plugin API changes.
