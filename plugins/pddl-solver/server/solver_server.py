@@ -6,7 +6,7 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 """
 
 from contextlib import contextmanager
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 import os
@@ -244,11 +244,11 @@ def numeric_planner(
 @mcp.tool(annotations={"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False})
 def save_plan(
     plan: Annotated[list[str], Field(description="List of action strings to save.")],
-    domain: Annotated[str, Field(description="Domain path or content (used to derive filename and metadata).")] = None,
-    problem: Annotated[str, Field(description="Problem path or content (used to derive filename and metadata).")] = None,
-    name: Annotated[str, Field(description="Name fragment for the plan file; becomes <tag> in the auto-generated `plan_<tag>.solution` pattern. Replaces (not augments) the domain/problem-derived tag.")] = None,
-    output_dir: Annotated[str, Field(description="Directory to save the plan in. Defaults to ~/plans/ (auto-created).")] = None,
-    solve_time: Annotated[float, Field(description="Solve time in seconds (included in file metadata header).")] = None,
+    domain: Annotated[Optional[str], Field(description="Domain path or content (used to derive filename and metadata).")] = None,
+    problem: Annotated[Optional[str], Field(description="Problem path or content (used to derive filename and metadata).")] = None,
+    name: Annotated[Optional[str], Field(description="Name fragment for the plan file; becomes <tag> in the auto-generated `plan_<tag>.solution` pattern. Replaces (not augments) the domain/problem-derived tag.")] = None,
+    output_dir: Annotated[Optional[str], Field(description="Directory to save the plan in. Defaults to ~/plans/ (auto-created).")] = None,
+    solve_time: Annotated[Optional[float], Field(description="Solve time in seconds (included in file metadata header).")] = None,
 ) -> dict:
     """Saves a computed plan to a file with metadata header.
     Filename pattern is always `plan_<tag>.solution`, where <tag> is `name` if supplied,

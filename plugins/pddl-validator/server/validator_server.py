@@ -6,7 +6,7 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 """
 
 from contextlib import contextmanager
-from typing import Annotated, Union
+from typing import Annotated, Optional, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 import os
@@ -84,7 +84,7 @@ def _ensure_plan_file(plan_input, name: str, req_dir: str) -> str:
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def validate_pddl_syntax(
     domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
-    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem.")] = None,
+    problem: Annotated[Optional[str], Field(description="PDDL content string or absolute file path to a .pddl file for the problem.")] = None,
     plan: Annotated[Union[str, list[str], None], Field(description="Plan as list of action strings, content string, or absolute file path. An empty list is valid input — it represents the empty plan, which is correct when the initial state already satisfies the goal.")] = None,
     verbose: Annotated[bool, Field(description="When True (default), returns the full pyvalidator 'details' dict alongside the summary. Set False to drop 'details' for size-sensitive callers.")] = True,
 ) -> dict:

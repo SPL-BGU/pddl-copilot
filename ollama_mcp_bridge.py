@@ -316,7 +316,7 @@ async def main():
         ollama_tools, tool_to_session = await connect_plugins(selected, exit_stack)
 
         if not ollama_tools:
-            print("No tools loaded. Check plugin configuration and Docker status.")
+            print("No tools loaded. Check plugin configuration.")
             sys.exit(1)
 
         print(f"\nTools available ({len(ollama_tools)}):")

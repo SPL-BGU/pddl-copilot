@@ -599,7 +599,7 @@ def diff_states(
 def normalize_pddl(
     content: Annotated[str, Field(description="PDDL domain or problem content string, OR absolute file path to a .pddl file.")],
     domain: Annotated[Optional[str], Field(description="PDDL domain content string or file path. Required for full problem parsing; without it, problem parsing is partial (no action details).")] = None,
-    output_format: Annotated[str, Field(description="Output format: 'pddl' for normalized PDDL text (domain only), 'json' for structured JSON.")] = "json",
+    output_format: Annotated[Literal["pddl", "json"], Field(description="Output format: 'pddl' for normalized PDDL text (domain only), 'json' for structured JSON.")] = "json",
 ) -> dict:
     """Parses PDDL content into a unified structured JSON representation.
 
