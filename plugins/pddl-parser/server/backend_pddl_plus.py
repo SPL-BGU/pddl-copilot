@@ -273,9 +273,25 @@ class PddlPlusBackend:
                 "effect": compact_pddl(action.effects_to_pddl()),
             })
 
+        # pddl-plus-parser stores requirements as a set, losing source order.
+        # Re-extract from the source file with regex to preserve declaration order.
+        # Strip ;-to-EOL comments inside the block before splitting so comments
+        # inside (:requirements ...) don't appear as bogus requirement tokens.
+        try:
+            with open(domain_path, encoding="utf-8") as f:
+                source = f.read()
+            m = re.search(r'\(:requirements\s+(.*?)\)', source, re.DOTALL)
+            if m:
+                req_block = re.sub(r';[^\n]*', '', m.group(1))
+                requirements = req_block.split()
+            else:
+                requirements = list(parsed_domain.requirements)
+        except OSError:
+            requirements = list(parsed_domain.requirements)
+
         return DomainInfo(
             name=parsed_domain.name,
-            requirements=sorted(parsed_domain.requirements),
+            requirements=requirements,
             types=types_info,
             predicates=predicates_info,
             actions=actions_info,
@@ -392,7 +408,13 @@ class PddlPlusBackend:
         truncated = False
         grounding_cap_hit = False
 
-        for action in parsed_domain.actions.values():
+        # Enumerate schemas and per-parameter objects in name-sorted order so
+        # itertools.product yields grounded actions in lex order over the
+        # output string. Combined with the early-exit at max_results, this
+        # delivers the lex-smallest N applicable actions deterministically —
+        # and identically to the UP backend (cross-backend reproducibility).
+        sorted_actions = sorted(parsed_domain.actions.values(), key=lambda a: a.name)
+        for action in sorted_actions:
             if len(applicable) >= max_results:
                 truncated = True
                 break
@@ -415,7 +437,7 @@ class PddlPlusBackend:
 
             obj_lists = []
             for ptype in param_types:
-                objs = objects_by_type.get(ptype.name, [])
+                objs = sorted(objects_by_type.get(ptype.name, []))
                 obj_lists.append(objs)
 
             if not all(obj_lists):

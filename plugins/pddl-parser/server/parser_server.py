@@ -9,7 +9,7 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Annotated, List, Optional
+from typing import Annotated, List, Literal, Optional, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 import json
@@ -18,6 +18,8 @@ import re
 import shutil
 import tempfile
 import uuid
+
+ParserName = Literal["pddl-plus-parser", "unified-planning"]
 
 mcp = FastMCP("pddl-parser")
 
@@ -115,6 +117,17 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
     )
 
 
+def _ensure_plan_file(plan_input, name: str, req_dir: str) -> str:
+    """Materialize a plan into a file, accepting list[str], str content, or path.
+    An empty list produces an empty file (valid for goal-already-satisfied)."""
+    if isinstance(plan_input, list):
+        path = os.path.join(req_dir, name)
+        with open(path, "w") as f:
+            f.write("\n".join(plan_input))
+        return path
+    return _ensure_file(plan_input, name, req_dir)
+
+
 def _clean_plan_lines(plan_path: str) -> List[str]:
     """Read a plan file and return clean action lines."""
     with open(plan_path) as f:
@@ -152,6 +165,14 @@ def _format_state(preds: list[str], is_init: bool = False) -> str:
     """Format a predicate list as a PDDL state string."""
     tag = ":init" if is_init else ":state"
     return f"({tag} {' '.join(preds)})"
+
+
+def _strip_implicit_object_type(types: dict) -> dict:
+    """Remove the implicit `"object": None` root from a types dict — it's noise
+    in callers reconstructing PDDL declarations."""
+    if not types:
+        return types
+    return {k: v for k, v in types.items() if not (k == "object" and v is None)}
 
 
 def _extract_pddl_section(content: str, keyword: str) -> Optional[str]:
@@ -359,8 +380,8 @@ def _run_with_fallback(method_name: str, parser: Optional[str], *args, **kwargs)
 def get_trajectory(
     domain: Annotated[str, Field(description="PDDL domain content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
     problem: Annotated[str, Field(description="PDDL problem content string or absolute file path to a .pddl file.")],
-    plan: Annotated[str, Field(description="Plan content string (one action per line, e.g., '(pick-up a)\\n(stack a b)') or absolute file path.")],
-    parser: Annotated[Optional[str], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
+    plan: Annotated[Union[str, list[str]], Field(description="Plan as list of action strings, content string (one action per line), or absolute file path. An empty list = empty plan (valid when init satisfies the goal).")],
+    parser: Annotated[Optional[ParserName], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
 ) -> dict:
     """Generates a full state-action-state trajectory from a PDDL domain, problem, and plan.
 
@@ -375,7 +396,7 @@ def get_trajectory(
         try:
             domain_path = _ensure_file(domain, "domain.pddl", rd)
             problem_path = _ensure_file(problem, "problem.pddl", rd)
-            plan_path = _ensure_file(plan, "plan.solution", rd)
+            plan_path = _ensure_plan_file(plan, "plan.solution", rd)
         except FileNotFoundError as e:
             return {"error": True, "message": str(e)}
 
@@ -410,7 +431,7 @@ def get_trajectory(
 def inspect_domain(
     domain: Annotated[str, Field(description="PDDL domain content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
     problem: Annotated[Optional[str], Field(description="Optional PDDL problem content string or absolute file path. When provided, adds grounded details: objects, initial state, and goal.")] = None,
-    parser: Annotated[Optional[str], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
+    parser: Annotated[Optional[ParserName], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
 ) -> dict:
     """Returns structured information about a PDDL domain: name, requirements, types, predicates, and actions.
 
@@ -436,7 +457,7 @@ def inspect_domain(
             out = {
                 "name": result.name,
                 "requirements": result.requirements,
-                "types": result.types,
+                "types": _strip_implicit_object_type(result.types),
                 "predicates": result.predicates,
                 "actions": result.actions,
                 "parser_used": parser_used,
@@ -468,7 +489,7 @@ def inspect_domain(
 def inspect_problem(
     domain: Annotated[str, Field(description="PDDL domain content string or absolute file path.")],
     problem: Annotated[str, Field(description="PDDL problem content string or absolute file path.")],
-    parser: Annotated[Optional[str], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
+    parser: Annotated[Optional[ParserName], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
 ) -> dict:
     """Returns structured information about a PDDL problem: name, objects, initial state predicates, and goal conditions.
 
@@ -507,11 +528,19 @@ def inspect_problem(
 def check_applicable(
     domain: Annotated[str, Field(description="PDDL domain content string or absolute file path.")],
     problem: Annotated[str, Field(description="PDDL problem content string or absolute file path.")],
-    state: Annotated[str, Field(description="Either 'initial' for the initial state, or a JSON array of predicate strings (e.g., '[\"(clear a)\", \"(on a b)\"]').")],
+    state: Annotated[str, Field(description="Either 'initial' for the initial state, or a JSON array of positive predicate strings (e.g., '[\"(clear a)\", \"(on a b)\"]'). Closed-world: any predicate not listed is treated as false.")],
     action: Annotated[str, Field(description="Grounded action call (e.g., '(pick-up a)' or '(stack a b)').")],
-    parser: Annotated[Optional[str], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
+    parser: Annotated[Optional[ParserName], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
 ) -> dict:
-    """Checks whether a grounded action is applicable in a given state, reporting satisfied/unsatisfied preconditions and the effects that would be applied.
+    """Checks whether a grounded action is applicable in a given state.
+
+    State semantics: closed-world. Predicates not listed in `state` are treated as false.
+    Pass the FULL list of true predicates (don't omit hand-empty when listing robot-at);
+    omitting a precondition predicate will produce a false-negative applicability verdict.
+
+    `would_add` / `would_delete` describe the effects that WOULD be applied if the action
+    were executed. They are returned for diagnosis even when `applicable=false`, where they
+    will NOT be applied to the state.
 
     Returns:
         Success: {"applicable": bool, "satisfied_preconditions": [...], "unsatisfied_preconditions": [...], "would_add": [...], "would_delete": [...], "parser_used": str}
@@ -568,14 +597,14 @@ def diff_states(
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def normalize_pddl(
-    content: Annotated[str, Field(description="PDDL domain or problem content string.")],
+    content: Annotated[str, Field(description="PDDL domain or problem content string, OR absolute file path to a .pddl file.")],
     domain: Annotated[Optional[str], Field(description="PDDL domain content string or file path. Required for full problem parsing; without it, problem parsing is partial (no action details).")] = None,
-    output_format: Annotated[str, Field(description="Output format: 'pddl' for normalized PDDL text (domain only), 'json' for structured JSON.")] = "json",
+    output_format: Annotated[Literal["pddl", "json"], Field(description="Output format: 'pddl' for normalized PDDL text (domain only), 'json' for structured JSON.")] = "json",
 ) -> dict:
     """Parses PDDL content into a unified structured JSON representation.
 
-    Accepts domain or problem content. Bridges both parser backends into a
-    common JSON form.
+    Accepts domain or problem content (inline string or file path). Bridges both
+    parser backends into a common JSON form.
 
     - **Domain content**: returns full domain structure (types, predicates, actions).
     - **Problem content + domain**: returns full problem structure via backend
@@ -585,10 +614,29 @@ def normalize_pddl(
       validate predicates or provide action details.
 
     Returns:
-        Success: {"valid": True, "type": "domain"|"problem", "normalized": dict|str, "warnings": [...]}
-        Error: {"valid": False, "type": str, "normalized": None, "warnings": [...]}"""
+        Success: {"valid": True, "type": "domain"|"problem", "normalized": dict|str, "errors": [], "warnings": [...]}
+        Error:   {"valid": False, "type": str, "normalized": None, "errors": [...], "warnings": [...]}"""
     with _request_dir() as rd:
-        content_stripped = content.strip()
+        # Resolve path input → load content. Inline content passes through unchanged.
+        # Guard against OSError (e.g., ENAMETOOLONG) when a long non-PDDL string
+        # slips past the inline-content sniff and reaches isfile.
+        def _safe_isfile(p: str) -> bool:
+            try:
+                return os.path.isfile(p)
+            except OSError:
+                return False
+
+        resolved_content = content
+        stripped = content.strip()
+        if not (stripped.startswith("(") or stripped.startswith(";") or "(define " in stripped):
+            if _safe_isfile(stripped):
+                with open(stripped, encoding="utf-8") as f:
+                    resolved_content = f.read()
+            elif _safe_isfile(os.path.expanduser(stripped)):
+                with open(os.path.expanduser(stripped), encoding="utf-8") as f:
+                    resolved_content = f.read()
+
+        content_stripped = resolved_content.strip()
 
         # Detect domain vs problem
         is_domain = "(domain " in content_stripped
@@ -600,12 +648,13 @@ def normalize_pddl(
                 "valid": False,
                 "type": "unknown",
                 "normalized": None,
+                "errors": ["Cannot detect PDDL type: content must contain '(domain ...' or '(problem ...'."],
                 "warnings": ["Cannot detect PDDL type: content must contain '(domain ...' or '(problem ...'."],
             }
 
         try:
             if pddl_type == "domain":
-                domain_path = _ensure_file(content, "domain.pddl", rd)
+                domain_path = _ensure_file(resolved_content, "domain.pddl", rd)
                 result, parser_used = _run_with_fallback(
                     "inspect_domain", None, domain_path
                 )
@@ -615,7 +664,7 @@ def normalize_pddl(
                     normalized = {
                         "name": result.name,
                         "requirements": result.requirements,
-                        "types": result.types,
+                        "types": _strip_implicit_object_type(result.types),
                         "predicates": result.predicates,
                         "actions": result.actions,
                         "parser_used": parser_used,
@@ -624,6 +673,7 @@ def normalize_pddl(
                     "valid": True,
                     "type": "domain",
                     "normalized": normalized,
+                    "errors": [],
                     "warnings": [],
                 }
 
@@ -633,7 +683,7 @@ def normalize_pddl(
                 if domain is not None:
                     # Full parse with backend
                     domain_path = _ensure_file(domain, "domain.pddl", rd)
-                    problem_path = _ensure_file(content, "problem.pddl", rd)
+                    problem_path = _ensure_file(resolved_content, "problem.pddl", rd)
                     prob_result, parser_used = _run_with_fallback(
                         "inspect_problem", None, domain_path, problem_path
                     )
@@ -650,7 +700,7 @@ def normalize_pddl(
                     }
                 else:
                     # Lightweight parse without domain — extract what we can
-                    normalized = _lightweight_parse_problem(content)
+                    normalized = _lightweight_parse_problem(resolved_content)
                     normalized["num_objects"] = len(normalized["objects"])
                     normalized["num_init_facts"] = len(normalized["init"])
                     normalized["num_goal_conditions"] = len(normalized["goal"])
@@ -663,15 +713,18 @@ def normalize_pddl(
                     "valid": True,
                     "type": "problem",
                     "normalized": normalized,
+                    "errors": [],
                     "warnings": warnings,
                 }
 
         except Exception as e:
+            err = f"{type(e).__name__}: {e}"
             return {
                 "valid": False,
                 "type": pddl_type,
                 "normalized": None,
-                "warnings": [f"{type(e).__name__}: {e}"],
+                "errors": [err],
+                "warnings": [err],
             }
 
 
@@ -679,11 +732,17 @@ def normalize_pddl(
 def get_applicable_actions(
     domain: Annotated[str, Field(description="PDDL domain content string or absolute file path.")],
     problem: Annotated[str, Field(description="PDDL problem content string or absolute file path.")],
-    state: Annotated[str, Field(description="Either 'initial' for the initial state, or a JSON array of predicate strings.")] = "initial",
-    max_results: Annotated[int, Field(description="Maximum number of applicable actions to return.")] = DEFAULT_MAX_APPLICABLE_ACTIONS,
-    parser: Annotated[Optional[str], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
+    state: Annotated[str, Field(description="Either 'initial' for the initial state, or a JSON array of positive predicate strings. Closed-world: predicates not listed are treated as false.")] = "initial",
+    max_results: Annotated[int, Field(description="Maximum number of applicable actions to return. When the total exceeds this cap, results are sorted lexicographically and truncated; 'truncated' is set to true.")] = DEFAULT_MAX_APPLICABLE_ACTIONS,
+    parser: Annotated[Optional[ParserName], Field(description="Parser backend: 'pddl-plus-parser', 'unified-planning', or null for auto-select with fallback.")] = None,
 ) -> dict:
-    """Enumerates all applicable grounded actions in a given state by checking every possible grounding against the state's preconditions.
+    """Enumerates applicable grounded actions in a given state.
+
+    State semantics: closed-world. Predicates not listed in `state` are treated as false —
+    pass the FULL list of true predicates.
+
+    Ordering: results are sorted lexicographically by grounded-action string before any
+    truncation, so the returned subset is deterministic across backends and runs.
 
     Returns:
         Success: {"applicable_actions": [...], "count": int, "truncated": bool, "parser_used": str}
@@ -702,9 +761,10 @@ def get_applicable_actions(
                 domain_path, problem_path, state_preds, max_results,
             )
 
+            sorted_actions = sorted(result.actions)
             out = {
-                "applicable_actions": result.actions,
-                "count": len(result.actions),
+                "applicable_actions": sorted_actions,
+                "count": len(sorted_actions),
                 "truncated": result.truncated,
                 "parser_used": parser_used,
             }

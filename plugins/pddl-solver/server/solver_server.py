@@ -6,7 +6,7 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 """
 
 from contextlib import contextmanager
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 import os
@@ -172,13 +172,27 @@ def _solve(engine_name: str, domain: str, problem: str,
             return {"error": True,
                     "message": "Planner ran out of memory"}
 
-        # Planner finished but no plan found
+        # INTERNAL_ERROR / UNSUPPORTED_PROBLEM / INTERMEDIATE — the planner did
+        # NOT successfully run-and-conclude-no-plan. Treat as environment error,
+        # not as "no plan found" (which would lie via empty plan + misleading note).
+        #
+        # macOS ships a no-op `java` stub binary that prints exactly the string
+        # below when no real JRE is installed — match it for a clean user-facing
+        # message. Linux/Windows JVM-missing errors produce different text
+        # (e.g., "java: command not found") and fall through to the generic
+        # "Planner failed with status X" with the full log attached — still
+        # actionable, just not auto-classified.
+        trimmed_log = log[-MAX_FAILURE_LOG_CHARS:] if log else ""
+        if "Unable to locate a Java Runtime" in log:
+            message = "Java runtime not found — required by ENHSP. Install OpenJDK 17+."
+        else:
+            message = f"Planner failed with status {status}"
         return {
-            "plan": [],
-            "solve_time": solve_time,
+            "error": True,
+            "message": message,
             "status": str(status),
-            "log": log[-MAX_FAILURE_LOG_CHARS:] if log else "",
-            "note": "Planner ran but did not find a plan.",
+            "solve_time": solve_time,
+            "log": trimmed_log,
         }
 
 
@@ -194,8 +208,10 @@ def classic_planner(
 ) -> dict:
     """Computes a plan for a classical PDDL planning problem using Fast Downward.
     Does NOT support numeric fluents or durative actions — use numeric_planner for those.
-    Returns dict with 'plan' (action list, empty if unsolvable) and 'solve_time' (seconds).
-    On failure returns dict with 'error' and 'message'."""
+    Returns:
+        Solved:      {"plan": [...], "solve_time": float}
+        Unsolvable:  {"plan": [], "solve_time": float, "note": "Problem is unsolvable"}
+        Error:       {"error": True, "message": str, ...}  (timeout, memout, internal/env failure)"""
     if strategy not in FD_STRATEGIES:
         return {
             "error": True,
@@ -217,22 +233,27 @@ def numeric_planner(
 ) -> dict:
     """Computes a plan for a PDDL problem with numeric fluents (:functions, increase, decrease) using ENHSP.
     Use this instead of classic_planner when the domain uses :functions or numeric effects.
-    Does NOT support durative/temporal actions.
-    Returns dict with 'plan' (action list, empty if unsolvable) and 'solve_time' (seconds).
-    On failure returns dict with 'error' and 'message'."""
+    Does NOT support durative/temporal actions. Requires Java 17+ at runtime.
+    Returns:
+        Solved:      {"plan": [...], "solve_time": float}
+        Unsolvable:  {"plan": [], "solve_time": float, "note": "Problem is unsolvable"}
+        Error:       {"error": True, "message": str, ...}  (timeout, memout, missing Java, internal failure)"""
     return _solve(engine_name="enhsp", domain=domain, problem=problem)
 
 
 @mcp.tool(annotations={"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False})
 def save_plan(
-    plan: Annotated[list, Field(description="List of action strings to save.")],
-    domain: Annotated[str, Field(description="Domain path or content (used to derive filename and metadata).")] = None,
-    problem: Annotated[str, Field(description="Problem path or content (used to derive filename and metadata).")] = None,
-    name: Annotated[str, Field(description="Name for the plan file. Overrides domain/problem-based naming.")] = None,
-    output_dir: Annotated[str, Field(description="Directory to save the plan in. Defaults to ~/plans/.")] = None,
-    solve_time: Annotated[float, Field(description="Solve time in seconds (included in file metadata header).")] = None,
+    plan: Annotated[list[str], Field(description="List of action strings to save.")],
+    domain: Annotated[Optional[str], Field(description="Domain path or content (used to derive filename and metadata).")] = None,
+    problem: Annotated[Optional[str], Field(description="Problem path or content (used to derive filename and metadata).")] = None,
+    name: Annotated[Optional[str], Field(description="Name fragment for the plan file; becomes <tag> in the auto-generated `plan_<tag>.solution` pattern. Replaces (not augments) the domain/problem-derived tag.")] = None,
+    output_dir: Annotated[Optional[str], Field(description="Directory to save the plan in. Defaults to ~/plans/ (auto-created).")] = None,
+    solve_time: Annotated[Optional[float], Field(description="Solve time in seconds (included in file metadata header).")] = None,
 ) -> dict:
     """Saves a computed plan to a file with metadata header.
+    Filename pattern is always `plan_<tag>.solution`, where <tag> is `name` if supplied,
+    else derived from domain/problem basenames, else a random hex. On collision, a numeric
+    suffix is appended (`plan_<tag>_1.solution`, `_2.solution`, ...).
     Returns dict with 'file_path' (path where plan was saved) and 'plan_length' (number of actions)."""
     # Tag derivation
     if name:

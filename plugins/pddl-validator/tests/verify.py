@@ -227,6 +227,62 @@ def run_test_body() -> int:
         assert "error" not in result or result.get("status") == "SYNTAX_ERROR"
     test("validate_pddl_syntax (malformed PDDL)", test_malformed_pddl)
 
+    # Regression: pyvalidator's report formatter unconditionally appended
+    # "Plan is VALID" when is_valid=True, even on validate_syntax() calls with
+    # no plan supplied. The plugin must guarantee the misleading line is absent
+    # when no plan was executed — either via the in-plugin strip (workaround,
+    # pyvalidator <0.1.5) or via the upstream fix (pyvalidator >=0.1.5).
+    def test_no_plan_verdict_leak_domain_only():
+        result = validate_pddl_syntax(DOMAIN, verbose=False)
+        assert "error" not in result, result
+        assert "Plan is VALID" not in result["report"], \
+            f"misleading 'Plan is VALID' leaked into domain-only report: {result['report']!r}"
+        assert "Plan is INVALID" not in result["report"]
+    test("validate_pddl_syntax (no plan verdict leak — domain only)", test_no_plan_verdict_leak_domain_only)
+
+    def test_no_plan_verdict_leak_domain_problem():
+        result = validate_pddl_syntax(DOMAIN, PROBLEM, verbose=False)
+        assert "error" not in result, result
+        assert "Plan is VALID" not in result["report"], \
+            f"misleading 'Plan is VALID' leaked into domain+problem report: {result['report']!r}"
+        assert "Plan is INVALID" not in result["report"]
+    test("validate_pddl_syntax (no plan verdict leak — domain+problem)", test_no_plan_verdict_leak_domain_problem)
+
+    # Edge case: empty plan IS valid when init already satisfies the goal.
+    # Must flow through validator.validate() (plan-execution mode), not
+    # validate_syntax(), so the "Plan is VALID" line is legitimately retained.
+    GOAL_MET_PROBLEM = """(define (problem already-solved) (:domain bw)
+      (:objects a b)
+      (:init (on a b) (clear a) (ontable b) (handempty))
+      (:goal (on a b)))"""
+
+    def test_empty_plan_init_satisfies_goal():
+        result = validate_pddl_syntax(DOMAIN, GOAL_MET_PROBLEM, plan=[], verbose=False)
+        assert "error" not in result, result
+        assert result["valid"] is True, f"empty plan with init satisfying goal should be VALID: {result}"
+        assert result["status"] == "VALID"
+        # Plan-execution path WAS taken (because plan=[] is a list, not None),
+        # so the "Plan is VALID" line is meaningful and should appear.
+        assert "Plan is VALID" in result["report"], \
+            f"empty plan validating a goal-already-met problem should report 'Plan is VALID': {result['report']!r}"
+    test("validate_pddl_syntax (empty plan, init satisfies goal)", test_empty_plan_init_satisfies_goal)
+
+    # list[str] plan input is the additive widening — should be equivalent to
+    # joining and passing as a content string.
+    def test_plan_as_list():
+        result = validate_pddl_syntax(DOMAIN, PROBLEM, plan=["(pick-up a)", "(stack a b)"], verbose=False)
+        assert "error" not in result, result
+        assert result["valid"] is True, f"list-form plan rejected: {result}"
+        assert result["status"] == "VALID"
+    test("validate_pddl_syntax (plan as list[str])", test_plan_as_list)
+
+    def test_state_transition_plan_as_list():
+        result = get_state_transition(DOMAIN, PROBLEM, plan=["(pick-up a)", "(stack a b)"], verbose=False)
+        assert "error" not in result, result
+        assert result["valid"] is True
+        assert len(result["steps"]) == 2
+    test("get_state_transition (plan as list[str])", test_state_transition_plan_as_list)
+
     print(f"\n{passed + failed} tests: {passed} passed, {failed} failed")
     if failed:
         print(f"\n{RED}Tests failed.{NC}")

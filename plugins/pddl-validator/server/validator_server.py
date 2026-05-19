@@ -6,7 +6,7 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 """
 
 from contextlib import contextmanager
-from typing import Annotated
+from typing import Annotated, Optional, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 import os
@@ -65,6 +65,18 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
     )
 
 
+def _ensure_plan_file(plan_input, name: str, req_dir: str) -> str:
+    """Materialize a plan into a file, accepting list[str], str content, or path.
+    A list is written verbatim (empty list → empty file, valid when init already
+    satisfies the goal)."""
+    if isinstance(plan_input, list):
+        path = os.path.join(req_dir, name)
+        with open(path, "w") as f:
+            f.write("\n".join(plan_input))
+        return path
+    return _ensure_file(plan_input, name, req_dir)
+
+
 # ---------------------------------------------------------------------------
 # MCP Tools
 # ---------------------------------------------------------------------------
@@ -72,13 +84,15 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def validate_pddl_syntax(
     domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
-    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem.")] = None,
-    plan: Annotated[str, Field(description="Plan content string or absolute file path for the action sequence to validate.")] = None,
+    problem: Annotated[Optional[str], Field(description="PDDL content string or absolute file path to a .pddl file for the problem.")] = None,
+    plan: Annotated[Union[str, list[str], None], Field(description="Plan as list of action strings, content string, or absolute file path. An empty list is valid input — it represents the empty plan, which is correct when the initial state already satisfies the goal.")] = None,
     verbose: Annotated[bool, Field(description="When True (default), returns the full pyvalidator 'details' dict alongside the summary. Set False to drop 'details' for size-sensitive callers.")] = True,
 ) -> dict:
-    """Validates PDDL domains, problems, and plans using pyvalidator.
-    Checks syntax when given domain only, checks problem consistency when given domain+problem,
-    and verifies plan correctness when given domain+problem+plan.
+    """Validates PDDL artifacts via pyvalidator. Mode depends on arguments supplied:
+      - domain only        → syntax check of the domain.
+      - domain + problem   → syntax + domain/problem consistency check (no plan executed).
+      - domain + problem + plan → full plan-execution validation (empty plan is valid
+                                  when the initial state already satisfies the goal).
     Returns:
         verbose=True:  {"valid": bool, "status": str, "report": str, "details": dict}
         verbose=False: {"valid": bool, "status": str, "report": str}
@@ -87,13 +101,13 @@ def validate_pddl_syntax(
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
             pp = _ensure_file(problem, "problem.pddl", rd) if problem else None
-            plp = _ensure_file(plan, "plan.solution", rd) if plan else None
+            plp = _ensure_plan_file(plan, "plan.solution", rd) if plan is not None else None
         except FileNotFoundError as e:
             return {"error": True, "message": str(e)}
 
         try:
             validator = PDDLValidator()
-            if plp and pp:
+            if plp is not None and pp is not None:
                 result = validator.validate(dp, pp, plp)
             else:
                 result = validator.validate_syntax(dp, pp)
@@ -114,7 +128,7 @@ def validate_pddl_syntax(
 def get_state_transition(
     domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
     problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
-    plan: Annotated[str, Field(description="Plan content string or absolute file path for the solution to simulate.")],
+    plan: Annotated[Union[str, list[str]], Field(description="Plan as list of action strings, content string, or absolute file path. An empty list simulates the empty plan (initial state = final state).")],
     verbose: Annotated[bool, Field(description="When True (default), returns the verbose pyvalidator 'report' and 'details' fields alongside the structured steps/trajectory. Set False to drop both for size-sensitive callers.")] = True,
 ) -> dict:
     """Simulates plan execution step-by-step and returns the state after each action.
@@ -127,7 +141,7 @@ def get_state_transition(
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
             pp = _ensure_file(problem, "problem.pddl", rd)
-            plp = _ensure_file(plan, "plan.solution", rd)
+            plp = _ensure_plan_file(plan, "plan.solution", rd)
         except FileNotFoundError as e:
             return {"error": True, "message": str(e)}
 
