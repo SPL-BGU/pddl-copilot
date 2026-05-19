@@ -112,12 +112,40 @@ def run_test_body() -> int:
             assert len(result["plan"]) > 0, f"Strategy {strategy}: empty plan"
     test("classic_planner (all strategies)", test_classic_strategies)
 
-    def test_numeric():
-        result = numeric_planner(NUMERIC_DOMAIN, NUMERIC_PROBLEM)
-        assert "error" not in result, f"Error: {result.get('message', result)}"
-        assert len(result["plan"]) > 0, "Expected non-empty plan"
-        assert result["solve_time"] >= 0
-    test("numeric_planner (counter)", test_numeric)
+    # macOS ships a stub `java` binary that prints "Unable to locate a Java
+    # Runtime" — so `shutil.which("java")` is unreliable. Actually invoke it.
+    def _java_actually_works() -> bool:
+        java_bin = shutil.which("java")
+        if not java_bin:
+            return False
+        try:
+            rc = subprocess.run(
+                [java_bin, "-version"], capture_output=True, timeout=5,
+            )
+            return rc.returncode == 0
+        except (subprocess.TimeoutExpired, OSError):
+            return False
+
+    java_available = _java_actually_works()
+    if java_available:
+        def test_numeric():
+            result = numeric_planner(NUMERIC_DOMAIN, NUMERIC_PROBLEM)
+            assert "error" not in result, f"Error: {result.get('message', result)}"
+            assert len(result["plan"]) > 0, "Expected non-empty plan"
+            assert result["solve_time"] >= 0
+        test("numeric_planner (counter)", test_numeric)
+    else:
+        # Audit-fix regression: Java-missing must surface as a real error
+        # ({error: True, message: ...}), not as an empty plan with a
+        # misleading "Planner ran but did not find a plan." note.
+        def test_numeric_planner_java_missing_is_error():
+            result = numeric_planner(NUMERIC_DOMAIN, NUMERIC_PROBLEM)
+            assert result.get("error") is True, \
+                f"Java-missing must surface as error, not empty plan: {result}"
+            assert "Java" in result.get("message", ""), \
+                f"error message should mention Java: {result.get('message')!r}"
+        test("numeric_planner (Java missing → error, not no-plan)",
+             test_numeric_planner_java_missing_is_error)
 
     def test_save():
         tmp = tempfile.mkdtemp()

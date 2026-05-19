@@ -273,9 +273,19 @@ class PddlPlusBackend:
                 "effect": compact_pddl(action.effects_to_pddl()),
             })
 
+        # pddl-plus-parser stores requirements as a set, losing source order.
+        # Re-extract from the source file with regex to preserve declaration order.
+        try:
+            with open(domain_path, encoding="utf-8") as f:
+                source = f.read()
+            m = re.search(r'\(:requirements\s+(.*?)\)', source, re.DOTALL)
+            requirements = m.group(1).split() if m else list(parsed_domain.requirements)
+        except OSError:
+            requirements = list(parsed_domain.requirements)
+
         return DomainInfo(
             name=parsed_domain.name,
-            requirements=list(parsed_domain.requirements),
+            requirements=requirements,
             types=types_info,
             predicates=predicates_info,
             actions=actions_info,

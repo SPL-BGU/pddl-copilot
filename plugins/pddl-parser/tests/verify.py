@@ -489,6 +489,61 @@ def run_test_body() -> int:
         assert rc.returncode == 0, f"env-override subprocess failed: {rc.stderr.strip()}"
     test("env-var overrides", test_env_overrides)
 
+    # ---- Audit-fix regression tests ----
+
+    def test_normalize_pddl_accepts_path():
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".pddl", delete=False) as f:
+            f.write(DOMAIN)
+            path = f.name
+        try:
+            r = normalize_pddl(path)
+            assert r["valid"] is True, f"path input rejected: {r}"
+            assert r["type"] == "domain"
+            assert r["normalized"]["name"] == "bw"
+        finally:
+            os.unlink(path)
+    test("normalize_pddl: accepts file path", test_normalize_pddl_accepts_path)
+
+    def test_normalize_pddl_errors_field():
+        r = normalize_pddl("this is not pddl")
+        assert r["valid"] is False
+        assert "errors" in r, f"missing 'errors' field: {r}"
+        assert isinstance(r["errors"], list) and len(r["errors"]) > 0, \
+            f"errors must be non-empty list on parse failure: {r}"
+        # warnings is kept populated for backward compatibility
+        assert "warnings" in r, "warnings field must still be present for back-compat"
+    test("normalize_pddl: errors field on parse failure", test_normalize_pddl_errors_field)
+
+    def test_get_applicable_actions_sorted():
+        r = get_applicable_actions(DOMAIN, PROBLEM, "initial")
+        assert "error" not in r, r
+        actions = r["applicable_actions"]
+        assert actions == sorted(actions), \
+            f"applicable_actions must be lex-sorted for deterministic truncation: {actions}"
+    test("get_applicable_actions: lex-sorted output", test_get_applicable_actions_sorted)
+
+    # Issue 3 from the code review: confirm pddl-plus-parser's
+    # parsed_domain.requirements iteration preserves source order.
+    # If this fails, switch backend_pddl_plus.inspect_domain to regex-extract
+    # from the source file (same approach as backend_up).
+    REORDERED_DOMAIN = """(define (domain reorder-probe)
+      (:requirements :strips :typing :negative-preconditions)
+      (:types thing)
+      (:predicates (foo ?x - thing) (bar ?x - thing))
+      (:action flip :parameters (?x - thing)
+        :precondition (and (foo ?x) (not (bar ?x)))
+        :effect (and (bar ?x) (not (foo ?x)))))"""
+
+    def test_requirements_preserves_source_order():
+        for backend in BACKENDS_TO_TEST:
+            r = inspect_domain(REORDERED_DOMAIN, parser=backend)
+            assert "error" not in r, f"{backend}: {r}"
+            reqs = r["requirements"]
+            assert reqs == [":strips", ":typing", ":negative-preconditions"], \
+                f"{backend}: requirements not in source order: {reqs}"
+    test("inspect_domain: :requirements preserves source order", test_requirements_preserves_source_order)
+
     print(f"\n{passed + failed + skipped} tests: {passed} passed, {failed} failed, {skipped} skipped")
     if failed:
         print(f"\n{RED}{failed} test(s) failed.{NC}")

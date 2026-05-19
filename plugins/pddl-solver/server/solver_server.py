@@ -175,8 +175,10 @@ def _solve(engine_name: str, domain: str, problem: str,
         # INTERNAL_ERROR / UNSUPPORTED_PROBLEM / INTERMEDIATE — the planner did
         # NOT successfully run-and-conclude-no-plan. Treat as environment error,
         # not as "no plan found" (which would lie via empty plan + misleading note).
+        # Match only the specific macOS Java-missing stub message; other env failures
+        # fall through to the generic message with the full log attached.
         trimmed_log = log[-MAX_FAILURE_LOG_CHARS:] if log else ""
-        if "Unable to locate a Java Runtime" in log or "java" in log.lower() and "not found" in log.lower():
+        if "Unable to locate a Java Runtime" in log:
             message = "Java runtime not found — required by ENHSP. Install OpenJDK 17+."
         else:
             message = f"Planner failed with status {status}"
