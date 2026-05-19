@@ -618,13 +618,21 @@ def normalize_pddl(
         Error:   {"valid": False, "type": str, "normalized": None, "errors": [...], "warnings": [...]}"""
     with _request_dir() as rd:
         # Resolve path input → load content. Inline content passes through unchanged.
+        # Guard against OSError (e.g., ENAMETOOLONG) when a long non-PDDL string
+        # slips past the inline-content sniff and reaches isfile.
+        def _safe_isfile(p: str) -> bool:
+            try:
+                return os.path.isfile(p)
+            except OSError:
+                return False
+
         resolved_content = content
         stripped = content.strip()
         if not (stripped.startswith("(") or stripped.startswith(";") or "(define " in stripped):
-            if os.path.isfile(stripped):
+            if _safe_isfile(stripped):
                 with open(stripped, encoding="utf-8") as f:
                     resolved_content = f.read()
-            elif os.path.isfile(os.path.expanduser(stripped)):
+            elif _safe_isfile(os.path.expanduser(stripped)):
                 with open(os.path.expanduser(stripped), encoding="utf-8") as f:
                     resolved_content = f.read()
 

@@ -523,6 +523,28 @@ def run_test_body() -> int:
             f"applicable_actions must be lex-sorted for deterministic truncation: {actions}"
     test("get_applicable_actions: lex-sorted output", test_get_applicable_actions_sorted)
 
+    # Cross-backend determinism: with both backends sorting schemas + object
+    # lists before enumeration, the lex-smallest N applicable actions are
+    # identical. Pins the claim in CHANGELOG / docstring / breaking-changes.
+    def test_get_applicable_actions_cross_backend_identical():
+        if not UP_AVAILABLE:
+            return
+        # Full enumeration: both backends should return the same set in the same order.
+        pp = get_applicable_actions(DOMAIN, PROBLEM, "initial", parser="pddl-plus-parser")
+        up = get_applicable_actions(DOMAIN, PROBLEM, "initial", parser="unified-planning")
+        assert "error" not in pp, pp
+        assert "error" not in up, up
+        assert pp["applicable_actions"] == up["applicable_actions"], \
+            f"backends disagree on applicable actions:\n  pp: {pp['applicable_actions']}\n  up: {up['applicable_actions']}"
+        # Truncated: the *same* lex-smallest prefix must come back from both backends.
+        pp_t = get_applicable_actions(DOMAIN, PROBLEM, "initial", max_results=2, parser="pddl-plus-parser")
+        up_t = get_applicable_actions(DOMAIN, PROBLEM, "initial", max_results=2, parser="unified-planning")
+        assert pp_t["applicable_actions"] == up_t["applicable_actions"], \
+            f"backends disagree on truncated subset:\n  pp: {pp_t['applicable_actions']}\n  up: {up_t['applicable_actions']}"
+        assert pp_t["applicable_actions"] == pp["applicable_actions"][:2], \
+            f"truncated subset is not the lex-smallest prefix: {pp_t['applicable_actions']} vs {pp['applicable_actions'][:2]}"
+    test("get_applicable_actions: cross-backend determinism", test_get_applicable_actions_cross_backend_identical)
+
     # Issue 3 from the code review: confirm pddl-plus-parser's
     # parsed_domain.requirements iteration preserves source order.
     # If this fails, switch backend_pddl_plus.inspect_domain to regex-extract
