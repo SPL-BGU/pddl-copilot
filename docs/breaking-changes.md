@@ -27,11 +27,11 @@ Marketplace `1.2.0 → 1.3.0`. Triggered by the May-2026 tool interface audit.
 | `save_plan` | `plan` parameter typed `list[str]` (was bare `list`). | additive (schema-only) | None. |
 | `save_plan` | Docstring revised. Filename pattern is now correctly documented as `plan_<tag>.solution`, where `<tag>` is `name` (when supplied) or a derived/random fragment. `name` is a tag fragment, not a literal-filename override. Behavior is unchanged from prior versions. | doc-only | None. |
 
-### pddl-validator `2.1.1 → 2.2.0`
+### pddl-validator `2.1.1 → 2.2.1`
 
 | Tool | Change | Type | Migration |
 |---|---|---|---|
-| `validate_pddl_syntax` | When called *without* a plan (domain-only or domain+problem), the `report` text no longer contains the leaked `"Plan is VALID"` / `"Plan is INVALID"` line from pyvalidator's report formatter. The `valid` boolean and `status` are unaffected. | **fix (behavior change)** | If any experiment grepped the `report` string for `"Plan is VALID"` to derive a syntax-check verdict, switch to reading `valid` (which is the canonical signal — `_parse_validation_verdict` already does this). Verified: experiments do NOT grep the report for these markers. |
+| `validate_pddl_syntax` | When called *without* a plan (domain-only or domain+problem), the `report` text no longer contains the leaked `"Plan is VALID"` / `"Plan is INVALID"` line. The actual fix lives upstream in **pyvalidator 0.1.5** ([SPL-BGU/pyvalidator#1](https://github.com/SPL-BGU/pyvalidator/pull/1)) — the formatter's Goal Check block is now gated on `"execution" in result.phases`. Requirements pin bumped to `pddl-pyvalidator>=0.1.5`. The `valid` boolean and `status` are unaffected. | **fix (behavior change, upstream)** | If any experiment grepped the `report` string for `"Plan is VALID"` to derive a syntax-check verdict, switch to reading `valid` (canonical signal — `_parse_validation_verdict` already does this). Verified: experiments do NOT grep the report for these markers. |
 | `validate_pddl_syntax`, `get_state_transition` | `plan` accepts `list[str]` in addition to `str` (content) or `str` (path). Empty list = empty plan, used to validate "init already satisfies goal." | additive | None. Existing string callers unaffected. |
 | `validate_pddl_syntax` | Docstring rewrite — three modes now stated explicitly. Tool name retained for backward compatibility (`validate_pddl_syntax` is a heavily-referenced symbol in `pddl-copilot-experiments`). The audit's rename suggestion (`validate_pddl`) was rejected to avoid the cross-repo blast radius. | doc-only | None. |
 

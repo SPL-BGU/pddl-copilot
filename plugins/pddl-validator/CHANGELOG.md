@@ -1,8 +1,8 @@
 # Changelog
 
-## 2.2.0
+## 2.2.1
 
-- **Bug fix (behavior change):** `validate_pddl_syntax` no longer leaks the misleading `"Plan is VALID"` / `"Plan is INVALID"` line in the `report` field when no plan was executed (domain-only or domain+problem calls). pyvalidator's report formatter prints these unconditionally whenever `is_valid=True`; the plugin now strips them from the report when only syntax/consistency was checked. The `valid` boolean is unaffected.
+- **Bug fix (behavior change), now upstream:** `validate_pddl_syntax` no longer leaks the misleading `"Plan is VALID"` / `"Plan is INVALID"` line in the `report` field when no plan was executed (domain-only or domain+problem calls). The fix lives upstream in pyvalidator 0.1.5 (`SPL-BGU/pyvalidator#1`): the report formatter's "Goal Check" block is now gated on `"execution" in result.phases`, so the misleading verdict line is only emitted on actual plan-execution paths. Requirements pin bumped to `pddl-pyvalidator>=0.1.5`. The plugin-side `_strip_plan_verdict_lines` workaround introduced during PR #50 review is removed — never shipped on `main`.
 - **Edge case preserved:** an empty plan (`plan=[]` or empty file) is still validated through the full plan-execution path — correct when the initial state already satisfies the goal, in which case `"Plan is VALID"` is legitimately retained.
 - `validate_pddl_syntax.plan` and `get_state_transition.plan` now accept `list[str]` in addition to the existing `str` (content or path) form. The list is materialized as a newline-joined file internally. Existing callers passing strings are unaffected.
 - Docstring rewrite for `validate_pddl_syntax` clarifies the three modes (syntax / consistency / plan execution) so the tool's broader scope matches its name.

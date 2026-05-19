@@ -77,19 +77,6 @@ def _ensure_plan_file(plan_input, name: str, req_dir: str) -> str:
     return _ensure_file(plan_input, name, req_dir)
 
 
-_PLAN_VERDICT_LINE_MARKERS = ("Plan is VALID", "Plan is INVALID")
-
-
-def _strip_plan_verdict_lines(report: str) -> str:
-    """Remove pyvalidator's 'Plan is VALID/INVALID' template lines from a report
-    when no plan was actually executed (domain-only or domain+problem syntax checks).
-    pyvalidator's formatter unconditionally appends these on `is_valid=True`."""
-    return "\n".join(
-        line for line in report.split("\n")
-        if not any(marker in line for marker in _PLAN_VERDICT_LINE_MARKERS)
-    )
-
-
 # ---------------------------------------------------------------------------
 # MCP Tools
 # ---------------------------------------------------------------------------
@@ -120,25 +107,17 @@ def validate_pddl_syntax(
 
         try:
             validator = PDDLValidator()
-            plan_executed = plp is not None and pp is not None
-            if plan_executed:
+            if plp is not None and pp is not None:
                 result = validator.validate(dp, pp, plp)
             else:
                 result = validator.validate_syntax(dp, pp)
         except Exception as e:
             return {"error": True, "message": f"Validation error: {e}"}
 
-        report_text = result.report()
-        if not plan_executed:
-            # pyvalidator's formatter leaks "Plan is VALID" whenever is_valid=True,
-            # regardless of whether a plan was actually executed. Strip the
-            # misleading line when only syntax/consistency was checked.
-            report_text = _strip_plan_verdict_lines(report_text)
-
         out = {
             "valid": result.is_valid,
             "status": result.status,
-            "report": report_text,
+            "report": result.report(),
         }
         if verbose:
             out["details"] = result.to_json()
