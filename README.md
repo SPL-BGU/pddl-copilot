@@ -133,33 +133,9 @@ Replace `/absolute/path/to` with the actual path where you cloned this repo.
 
 For OS-specific setup (macOS, Linux, Windows/WSL2), see [docs/cross-platform-setup.md](docs/cross-platform-setup.md).
 
-## Ollama MCP Bridge (Experimental)
+## Examples
 
-A CLI tool that connects local Ollama models to MCP plugins from this marketplace. Lets open-source LLMs use the same planning tools as Claude Code.
-
-### Setup
-
-```bash
-pip3 install -r requirements-bridge.txt
-```
-
-### Usage
-
-```bash
-python3 ollama_mcp_bridge.py
-```
-
-Or non-interactively:
-
-```bash
-python3 ollama_mcp_bridge.py --model qwen3:4b --plugins pddl-solver,pddl-validator,pddl-parser
-```
-
-### Requirements
-
-- [Ollama](https://ollama.com) installed and running (`ollama serve`)
-- A model with tool-calling support (e.g., `llama3.1`, `qwen3`, `mistral`)
-- Python 3.10+
+- [`examples/ollama-bridge/`](examples/ollama-bridge/) — reference CLI for driving the marketplace plugins from a local Ollama model. Standalone, not part of CI.
 
 ## Adding a New Plugin
 
@@ -210,10 +186,10 @@ pddl-copilot/
 │   └── mcp_protocol_test.py   # MCP stdio protocol smoke tests
 ├── .github/workflows/
 │   └── integration.yml        # PR gate: static checks + plugin tests + MCP protocol
+├── examples/
+│   └── ollama-bridge/         # Reference Ollama → MCP bridge (not in CI)
 ├── install_marketplace.sh     # Unified Cursor/Antigravity installer
 ├── CLAUDE.md                  # Marketplace-level instructions
-├── ollama_mcp_bridge.py       # Ollama MCP Bridge CLI
-├── requirements-bridge.txt    # Bridge dependencies
 ├── LICENSE
 └── README.md
 ```
