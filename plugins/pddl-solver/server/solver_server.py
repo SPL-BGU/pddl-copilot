@@ -206,12 +206,29 @@ def classic_planner(
     problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
     strategy: Annotated[Literal["lazy_greedy_cea", "astar_lmcut", "lazy_greedy_ff"], Field(description="Search strategy: 'lazy_greedy_cea' (fast, default), 'astar_lmcut' (optimal), 'lazy_greedy_ff' (fast, alternative).")] = "lazy_greedy_cea",
 ) -> dict:
-    """Computes a plan for a classical PDDL planning problem using Fast Downward.
-    Does NOT support numeric fluents or durative actions — use numeric_planner for those.
+    """Computes a plan for a classical PDDL planning problem using Fast Downward
+    (via up-fast-downward). Use this when the domain has no :functions; for domains
+    that declare :functions, use numeric_planner instead. Does NOT support
+    durative/temporal actions (no planner in this server does). No Java runtime
+    required.
+
+    `strategy` selects the Fast Downward search:
+      - "lazy_greedy_cea" (default): fast satisficing search via the context-
+        enhanced additive heuristic.
+      - "astar_lmcut": optimal A* with landmark-cut heuristic. Slower.
+      - "lazy_greedy_ff": alternative satisficing search via the FF heuristic.
+
     Returns:
-        Solved:      {"plan": [...], "solve_time": float}
-        Unsolvable:  {"plan": [], "solve_time": float, "note": "Problem is unsolvable"}
-        Error:       {"error": True, "message": str, ...}  (timeout, memout, internal/env failure)"""
+        Solved:      {"plan": [str, ...], "solve_time": float}
+        Unsolvable:  {"plan": [], "solve_time": float,
+                      "note": "Problem is unsolvable"}
+        Error:       {"error": True, "message": str, ...}
+                      Common error causes:
+                      - PDDL parse error ("PDDL parse error: ...")
+                      - planner timeout ("Planner timed out after Ns")
+                      - planner memout ("Planner ran out of memory")
+                      - internal/unsupported failure ("Planner failed with
+                        status ...", with a truncated `log` field attached)"""
     if strategy not in FD_STRATEGIES:
         return {
             "error": True,
@@ -231,13 +248,30 @@ def numeric_planner(
     domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
     problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
 ) -> dict:
-    """Computes a plan for a PDDL problem with numeric fluents (:functions, increase, decrease) using ENHSP.
-    Use this instead of classic_planner when the domain uses :functions or numeric effects.
-    Does NOT support durative/temporal actions. Requires Java 17+ at runtime.
+    """Computes a plan for a PDDL 2.1 problem with numeric fluents (:functions,
+    increase, decrease, numeric preconditions/effects) using ENHSP (via up-enhsp).
+    Use this when the domain declares :functions; for purely classical domains,
+    classic_planner is faster. Does NOT support durative/temporal actions.
+
+    Requires Java OpenJDK 17+ at runtime. If Java is missing:
+      - macOS (system Java stub detected): returns
+        {"error": True, "message": "Java runtime not found — required by ENHSP.
+        Install OpenJDK 17+."}
+      - Linux/Windows (JVM-launch failures look different across distros):
+        returns {"error": True, "message": "Planner failed with status ...",
+        "log": "..."} — the truncated `log` carries the actual JVM error.
+
     Returns:
-        Solved:      {"plan": [...], "solve_time": float}
-        Unsolvable:  {"plan": [], "solve_time": float, "note": "Problem is unsolvable"}
-        Error:       {"error": True, "message": str, ...}  (timeout, memout, missing Java, internal failure)"""
+        Solved:      {"plan": [str, ...], "solve_time": float}
+        Unsolvable:  {"plan": [], "solve_time": float,
+                      "note": "Problem is unsolvable"}
+        Error:       {"error": True, "message": str, ...}
+                      Common error causes:
+                      - missing Java runtime (see above)
+                      - PDDL parse error ("PDDL parse error: ...")
+                      - planner timeout / memout
+                      - internal/unsupported failure ("Planner failed with
+                        status ...", with a truncated `log` field attached)"""
     return _solve(engine_name="enhsp", domain=domain, problem=problem)
 
 

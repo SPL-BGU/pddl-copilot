@@ -23,7 +23,7 @@ NC = "\033[0m"
 # parity is desired.
 PLUGINS = [
     ("pddl-solver", {"classic_planner", "numeric_planner", "save_plan"}, "solver_server.py"),
-    ("pddl-validator", {"validate_pddl_syntax", "get_state_transition"}, "validator_server.py"),
+    ("pddl-validator", {"validate_domain", "validate_problem", "validate_plan", "get_state_transition"}, "validator_server.py"),
 ]
 
 

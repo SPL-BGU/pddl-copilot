@@ -6,7 +6,7 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 """
 
 from contextlib import contextmanager
-from typing import Annotated, Optional, Union
+from typing import Annotated, Union
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
 import os
@@ -81,47 +81,117 @@ def _ensure_plan_file(plan_input, name: str, req_dir: str) -> str:
 # MCP Tools
 # ---------------------------------------------------------------------------
 
+def _syntax_result_to_dict(result, verbose: bool) -> dict:
+    out = {
+        "valid": result.is_valid,
+        "status": result.status,
+        "report": result.report(),
+    }
+    if verbose:
+        out["details"] = result.to_json()
+    return out
+
+
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
-def validate_pddl_syntax(
+def validate_domain(
     domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
-    problem: Annotated[Optional[str], Field(description="PDDL content string or absolute file path to a .pddl file for the problem.")] = None,
-    plan: Annotated[Union[str, list[str], None], Field(description="Plan as list of action strings, content string, or absolute file path. An empty list is valid input — it represents the empty plan, which is correct when the initial state already satisfies the goal.")] = None,
     verbose: Annotated[bool, Field(description="When True (default), returns the full pyvalidator 'details' dict alongside the summary. Set False to drop 'details' for size-sensitive callers.")] = True,
 ) -> dict:
-    """Validates PDDL artifacts via pyvalidator. Mode depends on arguments supplied:
-      - domain only        → syntax check of the domain.
-      - domain + problem   → syntax + domain/problem consistency check (no plan executed).
-      - domain + problem + plan → full plan-execution validation (empty plan is valid
-                                  when the initial state already satisfies the goal).
+    """Validates a PDDL domain's syntax, types, and structural consistency via pyvalidator.
+    This is NOT a lexical-only check — it covers type-hierarchy soundness, predicate arity,
+    and section nesting in addition to surface syntax. To check that a problem agrees with
+    its domain, use validate_problem. To grade a plan, use validate_plan.
+
     Returns:
         verbose=True:  {"valid": bool, "status": str, "report": str, "details": dict}
         verbose=False: {"valid": bool, "status": str, "report": str}
-        Error:         {"error": True, "message": str}"""
+                       (drops "details" only — "report" is retained)
+        Error:         {"error": True, "message": str}
+
+        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR"."""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
-            pp = _ensure_file(problem, "problem.pddl", rd) if problem else None
-            plp = _ensure_plan_file(plan, "plan.solution", rd) if plan is not None else None
         except FileNotFoundError as e:
             return {"error": True, "message": str(e)}
 
         try:
-            validator = PDDLValidator()
-            if plp is not None and pp is not None:
-                result = validator.validate(dp, pp, plp)
-            else:
-                result = validator.validate_syntax(dp, pp)
+            result = PDDLValidator().validate_syntax(dp, None)
         except Exception as e:
             return {"error": True, "message": f"Validation error: {e}"}
 
-        out = {
-            "valid": result.is_valid,
-            "status": result.status,
-            "report": result.report(),
-        }
-        if verbose:
-            out["details"] = result.to_json()
-        return out
+        return _syntax_result_to_dict(result, verbose)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+def validate_problem(
+    domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
+    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem.")],
+    verbose: Annotated[bool, Field(description="When True (default), returns the full pyvalidator 'details' dict alongside the summary. Set False to drop 'details' for size-sensitive callers.")] = True,
+) -> dict:
+    """Validates that a PDDL problem is consistent with its domain via pyvalidator.
+    Checks domain syntax, problem syntax, and that the problem's objects, predicates,
+    and types resolve against the domain. Does NOT validate a plan — to grade a plan,
+    use validate_plan.
+
+    Returns:
+        verbose=True:  {"valid": bool, "status": str, "report": str, "details": dict}
+        verbose=False: {"valid": bool, "status": str, "report": str}
+                       (drops "details" only — "report" is retained)
+        Error:         {"error": True, "message": str}
+
+        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR"."""
+    with _request_dir() as rd:
+        try:
+            dp = _ensure_file(domain, "domain.pddl", rd)
+            pp = _ensure_file(problem, "problem.pddl", rd)
+        except FileNotFoundError as e:
+            return {"error": True, "message": str(e)}
+
+        try:
+            result = PDDLValidator().validate_syntax(dp, pp)
+        except Exception as e:
+            return {"error": True, "message": f"Validation error: {e}"}
+
+        return _syntax_result_to_dict(result, verbose)
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
+def validate_plan(
+    domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
+    problem: Annotated[str, Field(description="PDDL content string or absolute file path to a .pddl file for the problem definition.")],
+    plan: Annotated[Union[str, list[str]], Field(description="Plan as list of action strings, content string, or absolute file path. An empty list is valid — it represents the empty plan, correct when the initial state already satisfies the goal.")],
+    verbose: Annotated[bool, Field(description="When True (default), returns the full pyvalidator 'details' dict alongside the summary. Set False to drop 'details' for size-sensitive callers.")] = True,
+) -> dict:
+    """Executes a plan against a PDDL (domain, problem) and reports whether it reaches the
+    goal via pyvalidator. The "valid" field reflects PLAN CORRECTNESS — preconditions held
+    at each step and the goal is satisfied after the final action — not just syntax.
+
+    An empty plan (`[]`) is valid input; it represents the empty plan, which is correct
+    when the initial state already satisfies the goal.
+
+    Returns:
+        verbose=True:  {"valid": bool, "status": str, "report": str, "details": dict}
+        verbose=False: {"valid": bool, "status": str, "report": str}
+                       (drops "details" only — "report" is retained. This is asymmetric
+                        with get_state_transition, which drops BOTH at verbose=False.)
+        Error:         {"error": True, "message": str}
+
+        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR"."""
+    with _request_dir() as rd:
+        try:
+            dp = _ensure_file(domain, "domain.pddl", rd)
+            pp = _ensure_file(problem, "problem.pddl", rd)
+            plp = _ensure_plan_file(plan, "plan.solution", rd)
+        except FileNotFoundError as e:
+            return {"error": True, "message": str(e)}
+
+        try:
+            result = PDDLValidator().validate(dp, pp, plp)
+        except Exception as e:
+            return {"error": True, "message": f"Validation error: {e}"}
+
+        return _syntax_result_to_dict(result, verbose)
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
@@ -131,11 +201,20 @@ def get_state_transition(
     plan: Annotated[Union[str, list[str]], Field(description="Plan as list of action strings, content string, or absolute file path. An empty list simulates the empty plan (initial state = final state).")],
     verbose: Annotated[bool, Field(description="When True (default), returns the verbose pyvalidator 'report' and 'details' fields alongside the structured steps/trajectory. Set False to drop both for size-sensitive callers.")] = True,
 ) -> dict:
-    """Simulates plan execution step-by-step and returns the state after each action.
-    Use this to debug a plan or inspect intermediate states. For checking plan validity, use validate_pddl_syntax instead.
+    """Simulates plan execution step-by-step and returns the state after each action,
+    with rich precondition-failure diagnostics on bad steps (current values, deficits).
+    Use this to debug WHY a plan fails or inspect intermediate states. For a PASS/FAIL
+    verdict only, use validate_plan (cheaper, flat shape). For a clean state-action-state
+    sequence on a known-valid plan (training data, visualization, backend-agnostic
+    extraction), use the parser's `get_trajectory` — leaner output, no diagnostics.
+
+    An empty plan (`[]`) simulates the empty plan (initial state = final state).
+
     Returns:
         verbose=True:  {"valid": bool, "report": str, "steps": list, "trajectory": list, "details": dict}
         verbose=False: {"valid": bool, "steps": list, "trajectory": list}
+                       (drops BOTH "report" and "details". This is asymmetric with
+                        validate_plan, where verbose=False keeps "report".)
         Error:         {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:

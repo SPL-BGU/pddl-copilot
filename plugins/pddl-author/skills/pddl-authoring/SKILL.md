@@ -1,7 +1,7 @@
 ---
 name: pddl-authoring
 description: Use when the user asks to draft, generate, write, or translate a natural-language description into a PDDL domain or problem from scratch, or to revise an existing PDDL draft based on human feedback (add an action, change a precondition, rename a predicate, etc.). NOT for fixing parser/validator errors — use pddl-fixing for that.
-allowed-tools: mcp__pddl-validator__validate_pddl_syntax, mcp__pddl-parser__normalize_pddl, mcp__pddl-parser__inspect_domain, mcp__pddl-parser__inspect_problem, mcp__pddl-parser__get_applicable_actions, mcp__pddl-parser__check_applicable
+allowed-tools: mcp__pddl-validator__validate_domain, mcp__pddl-validator__validate_problem, mcp__pddl-parser__normalize_pddl, mcp__pddl-parser__inspect_domain, mcp__pddl-parser__inspect_problem, mcp__pddl-parser__get_applicable_actions, mcp__pddl-parser__check_applicable
 ---
 
 ## CRITICAL RULES — zero exceptions
@@ -10,7 +10,9 @@ allowed-tools: mcp__pddl-validator__validate_pddl_syntax, mcp__pddl-parser__norm
 
 After writing or editing a domain or problem:
 1. Call `normalize_pddl(content=...)` to confirm it parses.
-2. Call `validate_pddl_syntax(domain=..., problem=...)` to confirm syntactic + structural validity.
+2. Call the right validator tool for what you produced:
+   - Domain only → `validate_domain(domain=...)`
+   - Domain + problem → `validate_problem(domain=..., problem=...)`
 3. Only report the draft to the user if both succeed.
 4. If either fails: do **not** silently retry forever. Hand off to the `pddl-fixing` skill (tell the user: "syntax errors remain — switching to /pddl-fixing").
 
@@ -39,7 +41,7 @@ Workflow:
    - **Intent scenarios** — at least one POSITIVE ("from state X a plan must reach Y") and one NEGATIVE ("from state X no plan should exist") that pin down intent as falsifiable predicates. These also seed `/pddl-fixing`.
 2. **Pause for confirmation** unless the user said "just do it" or auto mode is active. Even in auto mode, always *show* the contract so the user can interrupt — the user accepts, edits, or corrects cells in one turn, never a multi-question interview.
 3. **Draft the domain** as a single PDDL string. Mirror the contract: every action's precondition/effect comes from its row in the action table. Use `:requirements` minimally — declare only what you actually use (`:typing`, `:negative-preconditions`, `:numeric-fluents`, etc.).
-4. **Validate syntax**: `normalize_pddl(content=domain)` then `validate_pddl_syntax(domain=domain)`.
+4. **Validate syntax**: `normalize_pddl(content=domain)` then `validate_domain(domain=domain)`.
 5. **Tool-grounded intent verification** (strongly recommended; requires a tiny example problem):
    - If the user did not supply a problem, draft one that exercises the positive and negative scenarios and ask them to confirm it represents intent before treating it as ground truth.
    - Call `inspect_domain(domain, problem)` — confirm grounded action signatures match the contract's action table.
@@ -55,14 +57,15 @@ Workflow:
 1. **Project the current PDDL into the intent contract**: call `inspect_domain` (and `inspect_problem` if a problem is available), then render the same table format from Mode A — types, predicates, actions, invariants. This is the baseline.
 2. **State the proposed delta as a contract diff** — show only the cells changing (or the rows being added / removed). Pause for confirmation if the change is non-trivial (>3 cell changes, or alters existing action semantics). For renames-only, no confirmation needed.
 3. **Apply the edit** to the PDDL string. Keep all unrelated code byte-identical — do not "clean up" while editing.
-4. **Validate syntax**: `normalize_pddl` then `validate_pddl_syntax`.
+4. **Validate syntax**: `normalize_pddl` then `validate_domain` (if you only have a domain) or `validate_problem` (if you also have a problem).
 5. **Tool-grounded re-verification** (if a problem is available): call `inspect_domain` again to confirm the new grounded signatures match the updated contract; spot-check applicability on at least one scenario the user named.
 6. **Report** the contract diff, the new draft, and the validator status.
 
 ## Tools you may call
 
 - `normalize_pddl(content, domain?, output_format?)` (pddl-parser) — quick parse check; returns structured JSON or raises a parse error.
-- `validate_pddl_syntax(domain, problem?, plan?, verbose?)` (pddl-validator) — full syntax + structural validation.
+- `validate_domain(domain, verbose?)` (pddl-validator) — domain syntax + structural validation.
+- `validate_problem(domain, problem, verbose?)` (pddl-validator) — domain/problem consistency validation.
 - `inspect_domain(domain, problem?, parser?)` (pddl-parser) — read-only structure of an existing draft (actions, predicates, types).
 - `inspect_problem(domain, problem, parser?)` (pddl-parser) — read-only structure of an existing problem.
 - `get_applicable_actions(domain, problem, state?, max_results?, parser?)` (pddl-parser) — list legal moves from a state. Used in Mode A step 5 to show the user what the domain actually permits from the initial state.
@@ -87,7 +90,7 @@ LLM proposes the contract:
 
 User: *"looks right — but rename `connected` to `road-between` and make it symmetric in init (both directions)."*
 
-LLM updates the contract (one cell changed), drafts the PDDL, runs `normalize_pddl` + `validate_pddl_syntax` (PASSED), then:
+LLM updates the contract (one cell changed), drafts the PDDL, runs `normalize_pddl` + `validate_problem` (PASSED), then:
 
 - `inspect_domain` → grounded signatures match the action table.
 - `get_applicable_actions(state="initial")` → returns `(drive t1 A B)`, `(load p1 t1 A)`. Matches expectation.
@@ -97,14 +100,14 @@ LLM reports the contract, the PDDL, `Validation: PASSED`, all verdicts matched, 
 
 ## What you MUST NOT do
 
-- Do NOT skip validation. A draft that hasn't passed `validate_pddl_syntax` is not a draft — it's a guess.
+- Do NOT skip validation. A draft that hasn't passed `validate_domain` (or `validate_problem` if a problem was drafted) is not a draft — it's a guess.
 - Do NOT call planners (`classic_planner` / `numeric_planner`) from this skill. Planning is the fix-loop's job.
 - Do NOT auto-fix repeatedly without bound. After one validate-fix cycle, if errors remain, hand off to `pddl-fixing` and tell the user.
 - Do NOT add `:requirements` you don't use. Each requirement implies a feature; redundant ones confuse downstream tools.
 
 ## If a sibling plugin's tool is missing
 
-If `validate_pddl_syntax` or `normalize_pddl` is not available (the user did not install pddl-validator / pddl-parser), do not silently produce unvalidated PDDL. Tell the user:
+If validator tools (`validate_domain` / `validate_problem`) or `normalize_pddl` are not available (the user did not install pddl-validator / pddl-parser), do not silently produce unvalidated PDDL. Tell the user:
 
 > "I drafted the PDDL but cannot validate it because `pddl-validator` / `pddl-parser` is not installed. Install them and re-run, or accept the draft as unverified."
 
