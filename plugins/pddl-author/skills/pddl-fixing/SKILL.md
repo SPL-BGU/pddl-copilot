@@ -1,7 +1,7 @@
 ---
 name: pddl-fixing
-description: Use when the user has a draft PDDL domain plus a description of intent and at least one anchor problem to test against, and wants an iterative fix-loop that runs parse → validate-syntax → solve → validate-plan → trajectory-check until all pass or the loop escalates to a human. Use this when /pddl-authoring produced a draft that fails validation, or when the user reports "this domain doesn't behave as I described".
-allowed-tools: mcp__pddl-validator__validate_pddl_syntax, mcp__pddl-validator__get_state_transition, mcp__pddl-parser__normalize_pddl, mcp__pddl-parser__inspect_domain, mcp__pddl-parser__inspect_problem, mcp__pddl-parser__get_trajectory, mcp__pddl-parser__get_applicable_actions, mcp__pddl-parser__check_applicable, mcp__pddl-solver__classic_planner, mcp__pddl-solver__numeric_planner
+description: Use when the user has a draft PDDL domain plus a description of intent and at least one anchor problem to test against, and wants an iterative fix-loop that runs parse → validate-problem → solve → validate-plan → trajectory-check until all pass or the loop escalates to a human. Use this when /pddl-authoring produced a draft that fails validation, or when the user reports "this domain doesn't behave as I described".
+allowed-tools: mcp__pddl-validator__validate_domain, mcp__pddl-validator__validate_problem, mcp__pddl-validator__validate_plan, mcp__pddl-validator__get_state_transition, mcp__pddl-parser__normalize_pddl, mcp__pddl-parser__inspect_domain, mcp__pddl-parser__inspect_problem, mcp__pddl-parser__get_trajectory, mcp__pddl-parser__get_applicable_actions, mcp__pddl-parser__check_applicable, mcp__pddl-solver__classic_planner, mcp__pddl-solver__numeric_planner
 ---
 
 ## CRITICAL RULES — zero exceptions
@@ -44,7 +44,7 @@ Inputs you must collect before starting:
 ### Iteration steps (run in order, stop on first failure and fix before continuing)
 
 1. **Parse** — `normalize_pddl(content=domain)`. If it fails, the PDDL is malformed; fix syntax based on the error message. Re-run.
-2. **Validate syntax** — `validate_pddl_syntax(domain=domain, problem=problem)`. If `valid=False`, the diagnostic in `report` / `details` tells you what's structurally wrong. Fix and re-run.
+2. **Validate domain+problem consistency** — `validate_problem(domain=domain, problem=problem)`. If `valid=False`, the diagnostic in `report` / `details` tells you what's structurally wrong (predicate arity, type mismatch, undeclared object). Fix and re-run. If you have a domain only (no anchor problem yet), use `validate_domain(domain=domain)` instead.
 3. **Plan against each scenario** — for every scenario in `intent_scenarios`, in order:
    - Choose the planner by reading the domain: has `:functions` / `increase` / `decrease` → `numeric_planner(domain, problem)`; else → `classic_planner(domain, problem)`.
    - Run it against the scenario's anchor problem and check the verdict against the scenario's expected outcome:
@@ -52,7 +52,7 @@ Inputs you must collect before starting:
      - **NEGATIVE expected, planner returned a plan** → domain too permissive. Tighten preconditions of the actions in the returned plan; the plan that "succeeded" exposes the leaking path.
      - **Planner errored** → read the error verbatim; usually a domain issue (undeclared predicate, type mismatch).
    Stop at the **first** failing scenario, fix the diagnosed issue, then restart the loop. Do not chase multiple scenario failures in one edit.
-4. **Validate the plan** — if a plan was returned: `validate_pddl_syntax(domain=domain, problem=problem, plan=plan)`. This is the strongest functional check: the planner found *something*, but the validator confirms each step's preconditions actually hold under the domain's semantics. If `valid=False`, the planner and validator disagree — almost always a domain bug (effects not modeled symmetrically with preconditions, or a typo in a predicate name). Fix the domain.
+4. **Validate the plan** — if a plan was returned: `validate_plan(domain=domain, problem=problem, plan=plan)`. This is the strongest functional check: the planner found *something*, but the validator confirms each step's preconditions actually hold under the domain's semantics. If `valid=False`, the planner and validator disagree — almost always a domain bug (effects not modeled symmetrically with preconditions, or a typo in a predicate name). Fix the domain.
 5. **Trajectory check against scenarios** — `get_trajectory(domain, problem, plan)` and `get_state_transition(domain, problem, plan)`. For each POSITIVE scenario, confirm the trajectory's final state satisfies the scenario's expected goal predicates; if the scenario named "must include action X," confirm X appears in the plan. If the plan reaches the goal by using an action that the contract listed as forbidden, the domain has a semantic bug — flag it to the user before "fixing" silently (this is when the loop should escalate to human review).
 6. **Done** — every scenario converges: every POSITIVE yields a valid plan whose trajectory satisfies its expected outcome, and every NEGATIVE yields no plan. Report:
    - final domain PDDL,
@@ -70,7 +70,9 @@ This gives the user a readable audit trail without overwhelming them.
 ## Tools you may call
 
 - `normalize_pddl` (pddl-parser) — parse check.
-- `validate_pddl_syntax` (pddl-validator) — syntax + plan validation.
+- `validate_domain` (pddl-validator) — domain syntax + structural consistency.
+- `validate_problem` (pddl-validator) — domain/problem consistency (no plan).
+- `validate_plan` (pddl-validator) — plan correctness against domain semantics.
 - `inspect_domain`, `inspect_problem` (pddl-parser) — read-only structure.
 - `get_applicable_actions` (pddl-parser) — list legal moves from a state; useful when diagnosing "domain too restrictive" in step 3.
 - `check_applicable` (pddl-parser) — test a specific action in a specific state; useful for pinpointing which precondition blocks an expected action.

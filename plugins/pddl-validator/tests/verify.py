@@ -100,7 +100,12 @@ def ensure_venv() -> Path:
 
 def run_test_body() -> int:
     sys.path.insert(0, str(SERVER_DIR))
-    from validator_server import validate_pddl_syntax, get_state_transition
+    from validator_server import (
+        validate_domain,
+        validate_problem,
+        validate_plan,
+        get_state_transition,
+    )
 
     print(f"Testing pddl-validator plugin")
     print(f"Server: {SERVER_DIR / 'validator_server.py'}")
@@ -120,57 +125,62 @@ def run_test_body() -> int:
             failed += 1
 
     def test_imports():
-        from validator_server import validate_pddl_syntax, get_state_transition  # noqa: F401
+        from validator_server import (  # noqa: F401
+            validate_domain,
+            validate_problem,
+            validate_plan,
+            get_state_transition,
+        )
     test("Server imports", test_imports)
 
     def test_syntax_domain_only():
-        result = validate_pddl_syntax(DOMAIN)
+        result = validate_domain(DOMAIN)
         assert "error" not in result, f"Error: {result.get('message', result)}"
         assert result["valid"] is True
         assert result["status"] == "VALID"
-    test("validate_pddl_syntax (domain only)", test_syntax_domain_only)
+    test("validate_domain (ok)", test_syntax_domain_only)
 
     def test_syntax_domain_problem():
-        result = validate_pddl_syntax(DOMAIN, PROBLEM)
+        result = validate_problem(DOMAIN, PROBLEM)
         assert "error" not in result, f"Error: {result.get('message', result)}"
         assert result["valid"] is True
-    test("validate_pddl_syntax (domain+problem)", test_syntax_domain_problem)
+    test("validate_problem (ok)", test_syntax_domain_problem)
 
     def test_valid_plan():
-        result = validate_pddl_syntax(DOMAIN, PROBLEM, VALID_PLAN)
+        result = validate_plan(DOMAIN, PROBLEM, VALID_PLAN)
         assert "error" not in result, f"Error: {result.get('message', result)}"
         assert result["valid"] is True, f"Expected valid plan, got: {result['status']}"
         assert result["status"] == "VALID"
         assert "VALID" in result["report"]
-    test("validate_pddl_syntax (valid plan)", test_valid_plan)
+    test("validate_plan (valid plan)", test_valid_plan)
 
     def test_invalid_plan():
-        result = validate_pddl_syntax(DOMAIN, PROBLEM, INVALID_PLAN)
+        result = validate_plan(DOMAIN, PROBLEM, INVALID_PLAN)
         assert "error" not in result, f"Error: {result.get('message', result)}"
         assert result["valid"] is False, "Expected invalid plan"
         assert result["status"] == "INVALID"
         assert "details" in result, "Default call should include 'details'"
         assert result["details"]["status"] == "INVALID"
-    test("validate_pddl_syntax (invalid plan)", test_invalid_plan)
+    test("validate_plan (invalid plan)", test_invalid_plan)
 
     def test_validate_verbose_default_has_details():
-        result = validate_pddl_syntax(DOMAIN, PROBLEM, VALID_PLAN)
+        result = validate_plan(DOMAIN, PROBLEM, VALID_PLAN)
         assert set(result.keys()) == {"valid", "status", "report", "details"}, f"Unexpected keys: {result.keys()}"
-    test("validate_pddl_syntax (default verbose=True)", test_validate_verbose_default_has_details)
+    test("validate_plan (default verbose=True)", test_validate_verbose_default_has_details)
 
     def test_validate_verbose_false_drops_details():
-        result = validate_pddl_syntax(DOMAIN, PROBLEM, VALID_PLAN, verbose=False)
+        result = validate_plan(DOMAIN, PROBLEM, VALID_PLAN, verbose=False)
         assert set(result.keys()) == {"valid", "status", "report"}, f"Unexpected keys: {result.keys()}"
-    test("validate_pddl_syntax (verbose=False drops details)", test_validate_verbose_false_drops_details)
+    test("validate_plan (verbose=False drops details)", test_validate_verbose_false_drops_details)
 
     def test_invalid_plan_verbose_false_still_diagnosable():
-        result = validate_pddl_syntax(DOMAIN, PROBLEM, INVALID_PLAN, verbose=False)
+        result = validate_plan(DOMAIN, PROBLEM, INVALID_PLAN, verbose=False)
         assert "error" not in result, f"Error: {result.get('message', result)}"
         assert result["valid"] is False
         assert result["status"] == "INVALID"
         assert result["report"], "report must be non-empty so failures are diagnosable without details"
         assert "details" not in result
-    test("validate_pddl_syntax (invalid plan, verbose=False)", test_invalid_plan_verbose_false_still_diagnosable)
+    test("validate_plan (invalid plan, verbose=False)", test_invalid_plan_verbose_false_still_diagnosable)
 
     def test_state_transition_verbose_default_has_report_details():
         result = get_state_transition(DOMAIN, PROBLEM, VALID_PLAN)
@@ -185,10 +195,10 @@ def run_test_body() -> int:
     test("get_state_transition (verbose=False slim, uncapped)", test_state_transition_verbose_false_slim)
 
     def test_numeric_validation():
-        result = validate_pddl_syntax(NUMERIC_DOMAIN, NUMERIC_PROBLEM, NUMERIC_PLAN)
+        result = validate_plan(NUMERIC_DOMAIN, NUMERIC_PROBLEM, NUMERIC_PLAN)
         assert "error" not in result, f"Error: {result.get('message', result)}"
         assert result["valid"] is True, f"Expected valid numeric plan, got: {result['status']}"
-    test("validate_pddl_syntax (numeric)", test_numeric_validation)
+    test("validate_plan (numeric)", test_numeric_validation)
 
     def test_state_transition():
         result = get_state_transition(DOMAIN, PROBLEM, VALID_PLAN)
@@ -210,22 +220,22 @@ def run_test_body() -> int:
     test("get_state_transition (numeric)", test_state_transition_numeric)
 
     def test_typed_hierarchy_subtype_accepted():
-        result = validate_pddl_syntax(TYPED_DOMAIN, TYPED_PROBLEM, TYPED_SUBTYPE_PLAN)
+        result = validate_plan(TYPED_DOMAIN, TYPED_PROBLEM, TYPED_SUBTYPE_PLAN)
         assert "error" not in result, f"Error: {result.get('message', result)}"
         assert result["valid"] is True, f"Subtype plan rejected: {result.get('report')}"
-    test("validate_pddl_syntax (typed hierarchy, subtype accepted)", test_typed_hierarchy_subtype_accepted)
+    test("validate_plan (typed hierarchy, subtype accepted)", test_typed_hierarchy_subtype_accepted)
 
     def test_typed_hierarchy_sibling_rejected():
-        result = validate_pddl_syntax(TYPED_DOMAIN, TYPED_PROBLEM, TYPED_SIBLING_PLAN)
+        result = validate_plan(TYPED_DOMAIN, TYPED_PROBLEM, TYPED_SIBLING_PLAN)
         assert "error" not in result, f"Error: {result.get('message', result)}"
         assert result["valid"] is False, "Sibling-type plan should have been rejected"
         assert "vehicle" in result["report"] and "box1" in result["report"]
-    test("validate_pddl_syntax (typed hierarchy, sibling rejected)", test_typed_hierarchy_sibling_rejected)
+    test("validate_plan (typed hierarchy, sibling rejected)", test_typed_hierarchy_sibling_rejected)
 
     def test_malformed_pddl():
-        result = validate_pddl_syntax("(define (domain broken))")
+        result = validate_domain("(define (domain broken))")
         assert "error" not in result or result.get("status") == "SYNTAX_ERROR"
-    test("validate_pddl_syntax (malformed PDDL)", test_malformed_pddl)
+    test("validate_domain (malformed PDDL)", test_malformed_pddl)
 
     # Regression: pyvalidator's report formatter unconditionally appended
     # "Plan is VALID" when is_valid=True, even on validate_syntax() calls with
@@ -233,48 +243,45 @@ def run_test_body() -> int:
     # when no plan was executed — either via the in-plugin strip (workaround,
     # pyvalidator <0.1.5) or via the upstream fix (pyvalidator >=0.1.5).
     def test_no_plan_verdict_leak_domain_only():
-        result = validate_pddl_syntax(DOMAIN, verbose=False)
+        result = validate_domain(DOMAIN, verbose=False)
         assert "error" not in result, result
         assert "Plan is VALID" not in result["report"], \
             f"misleading 'Plan is VALID' leaked into domain-only report: {result['report']!r}"
         assert "Plan is INVALID" not in result["report"]
-    test("validate_pddl_syntax (no plan verdict leak — domain only)", test_no_plan_verdict_leak_domain_only)
+    test("validate_domain (no plan verdict leak)", test_no_plan_verdict_leak_domain_only)
 
     def test_no_plan_verdict_leak_domain_problem():
-        result = validate_pddl_syntax(DOMAIN, PROBLEM, verbose=False)
+        result = validate_problem(DOMAIN, PROBLEM, verbose=False)
         assert "error" not in result, result
         assert "Plan is VALID" not in result["report"], \
             f"misleading 'Plan is VALID' leaked into domain+problem report: {result['report']!r}"
         assert "Plan is INVALID" not in result["report"]
-    test("validate_pddl_syntax (no plan verdict leak — domain+problem)", test_no_plan_verdict_leak_domain_problem)
+    test("validate_problem (no plan verdict leak)", test_no_plan_verdict_leak_domain_problem)
 
     # Edge case: empty plan IS valid when init already satisfies the goal.
-    # Must flow through validator.validate() (plan-execution mode), not
-    # validate_syntax(), so the "Plan is VALID" line is legitimately retained.
+    # validate_plan dispatches through validator.validate() (plan-execution
+    # mode), so the "Plan is VALID" line is legitimately retained.
     GOAL_MET_PROBLEM = """(define (problem already-solved) (:domain bw)
       (:objects a b)
       (:init (on a b) (clear a) (ontable b) (handempty))
       (:goal (on a b)))"""
 
     def test_empty_plan_init_satisfies_goal():
-        result = validate_pddl_syntax(DOMAIN, GOAL_MET_PROBLEM, plan=[], verbose=False)
+        result = validate_plan(DOMAIN, GOAL_MET_PROBLEM, plan=[], verbose=False)
         assert "error" not in result, result
         assert result["valid"] is True, f"empty plan with init satisfying goal should be VALID: {result}"
         assert result["status"] == "VALID"
-        # Plan-execution path WAS taken (because plan=[] is a list, not None),
-        # so the "Plan is VALID" line is meaningful and should appear.
         assert "Plan is VALID" in result["report"], \
             f"empty plan validating a goal-already-met problem should report 'Plan is VALID': {result['report']!r}"
-    test("validate_pddl_syntax (empty plan, init satisfies goal)", test_empty_plan_init_satisfies_goal)
+    test("validate_plan (empty plan, init satisfies goal)", test_empty_plan_init_satisfies_goal)
 
-    # list[str] plan input is the additive widening — should be equivalent to
-    # joining and passing as a content string.
+    # list[str] plan input — should be equivalent to joining and passing as a content string.
     def test_plan_as_list():
-        result = validate_pddl_syntax(DOMAIN, PROBLEM, plan=["(pick-up a)", "(stack a b)"], verbose=False)
+        result = validate_plan(DOMAIN, PROBLEM, plan=["(pick-up a)", "(stack a b)"], verbose=False)
         assert "error" not in result, result
         assert result["valid"] is True, f"list-form plan rejected: {result}"
         assert result["status"] == "VALID"
-    test("validate_pddl_syntax (plan as list[str])", test_plan_as_list)
+    test("validate_plan (plan as list[str])", test_plan_as_list)
 
     def test_state_transition_plan_as_list():
         result = get_state_transition(DOMAIN, PROBLEM, plan=["(pick-up a)", "(stack a b)"], verbose=False)

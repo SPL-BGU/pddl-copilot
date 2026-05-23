@@ -387,7 +387,14 @@ def get_trajectory(
 
     Parses the domain and problem, then simulates the plan step-by-step to produce
     structured JSON with the state before each action, the action applied, and the
-    final state after all actions.
+    final state after all actions. Assumes the plan is valid — does NOT return a
+    correctness verdict or precondition diagnostics. For debugging WHY a plan
+    fails (per-step precondition failures, numeric deficits), use the validator's
+    `get_state_transition` instead; for a PASS/FAIL verdict only, use the
+    validator's `validate_plan`. This tool's strength is extraction: clean
+    state-action-state sequences for training data, visualization, or
+    backend-agnostic trajectory generation (dual backend: pddl-plus-parser or
+    unified-planning).
 
     Returns:
         Success: {"trajectory": {"1": {"state": "...", "action": "..."}, ...}, "final_state": "...", "num_steps": int, "parser_used": str}

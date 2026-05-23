@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.6.0
+
+- `get_trajectory` docstring adds a cross-reference distinguishing it from the validator's `get_state_transition`: this tool is for clean trajectory *extraction* on known-valid plans (dual-backend, leaner shape, no diagnostics); `get_state_transition` is for *debugging* with rich per-step precondition failures. Motivated by LLM tool-selection ambiguity between the two near-synonymous names.
+- SKILL.md "Write then validate" workflow updated to reference the validator's split tools (`validate_domain` / `validate_problem` / `validate_plan`) instead of the removed `validate_pddl_syntax`. Companion to pddl-validator 3.0.0.
+- No behavior changes — descriptions only.
+
+**Sources informing the description rewrite:**
+- Anthropic engineering, "Writing tools for agents" — the cross-reference recommendation between near-synonymous tools is what motivated the `get_trajectory` ↔ `get_state_transition` xref: https://www.anthropic.com/engineering/writing-tools-for-agents
+
 ## 1.5.0
 
 - `parser` parameter on all tools is now typed `Literal["pddl-plus-parser", "unified-planning"]` (was free-form `str`). Misspellings now fail at schema validation rather than reaching the runtime fallback's "Parser X not available" check. Valid values are unchanged.

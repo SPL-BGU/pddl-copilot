@@ -60,7 +60,7 @@ Let auto-select handle backend choice. Pass `parser=` explicitly only when overr
 ### Cross-plugin workflows (optional)
 
 - **Solve then trace**: After `classic_planner` returns a plan (pddl-solver, if installed), use `get_trajectory` to trace execution.
-- **Write then validate**: After writing PDDL, use `normalize_pddl` for a quick syntax check. For thorough validation, use `validate_pddl_syntax` (pddl-validator, if installed).
+- **Write then validate**: After writing PDDL, use `normalize_pddl` for a quick syntax check. For thorough validation, use `validate_domain` / `validate_problem` / `validate_plan` from pddl-validator (if installed), picking the tool that matches what you have in hand.
 
 ### If a tool returns an error
 
