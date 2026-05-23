@@ -54,6 +54,7 @@ Before committing the fix, review it:
 1. Run the plugin's `tests/verify.py` to confirm the fix
 2. If the issue was in CI/CD, trigger a manual workflow run: `gh workflow run <workflow>`
 3. Report: what broke, why, what was fixed, verification result
+4. If `tests/verify.py` is missing or doesn't fully cover the plugin's MCP tools, run bundled `/run-skill-generator` once for that plugin so bundled `/verify` can replay the launch + smoke recipe in future sessions (requires Claude Code v2.1.145+).
 
 ### Common Issues Reference
 
