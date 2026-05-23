@@ -3,7 +3,7 @@ name: simplifier
 description: Reviews plans and code for unnecessary complexity, plugin isolation violations, and MCP convention issues. Use after planning or before committing multi-file changes.
 tools: Read, Grep, Glob
 model: opus
-effort: high
+effort: xhigh
 permissionMode: plan
 maxTurns: 10
 ---
