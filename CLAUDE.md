@@ -16,11 +16,9 @@ This repository is a Claude Code plugin marketplace. Each plugin lives in its ow
 - **pddl-parser** (`plugins/pddl-parser/`) — PDDL parsing and structured trajectory generation with dual-backend support: pddl-plus-parser (default) and unified-planning. Pure pip, no Docker.
 - **pddl-author** (`plugins/pddl-author/`) — Authoring and iterative-fix skills (no MCP server). Drafts PDDL from NL descriptions and fixes via sibling plugins as ground truth. Pure skill.
 
-## Ollama MCP Bridge
+## Examples (not part of the maintained surface)
 
-`ollama_mcp_bridge.py` — root-level CLI tool that connects Ollama models to marketplace plugins via MCP. Not a plugin itself. Reads `marketplace.json` to discover plugins dynamically.
-
-Run: `python3 ollama_mcp_bridge.py` (deps: `pip3 install -r requirements-bridge.txt`)
+- `examples/ollama-bridge/` — reference CLI connecting local Ollama models to the marketplace plugins via MCP. Standalone; not exercised by CI.
 
 ## Two-Tier Skill System
 
