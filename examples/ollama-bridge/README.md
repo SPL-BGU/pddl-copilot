@@ -26,7 +26,7 @@ Non-interactive:
 python3 examples/ollama-bridge/ollama_mcp_bridge.py --model qwen3:4b --plugins pddl-solver,pddl-validator,pddl-parser
 ```
 
-The bridge discovers plugins by scanning `plugins/*/CLAUDE.md` + `plugins/*/.mcp.json` from the repo root, so it must be run from within a checkout of this repository.
+The bridge discovers plugins by resolving `plugins/` relative to its own location (`__file__`), so the script must live inside a checkout of this repository. The cwd you invoke it from does not matter.
 
 ## Requirements
 
