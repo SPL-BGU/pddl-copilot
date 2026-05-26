@@ -3,7 +3,8 @@
 ## 2.3.1
 
 - **Bug fix:** `numeric_planner` now works on hosts with a JDK installed but not on PATH. ENHSP shells out to bare `java`; on macOS `/usr/bin/java` is a stub that errors unless a JDK is registered under `/Library/Java/JavaVirtualMachines/`, and Homebrew's `openjdk` formula is keg-only (never registered there). Linux had analogous gaps when JDK lives under `/usr/lib/jvm` with no `update-alternatives` link. The server now probes for a working JDK at module load and exports `JAVA_HOME` / prepends to `PATH` so ENHSP subprocesses inherit a usable environment.
-- Resolution order: respect existing working `$JAVA_HOME` → `/usr/libexec/java_home -v 17+` (macOS) → Homebrew keg-only globs `/opt/homebrew/opt/openjdk*` and `/usr/local/opt/openjdk*` (macOS) → `/usr/lib/jvm/*` (Linux). Falls through to the existing friendly "Java runtime not found" error when no JDK is installed.
+- Resolution order: if `java` on PATH already works at >=17, no env mutation (ENHSP resolves it on its own). Otherwise: respect existing working `$JAVA_HOME` → `/usr/libexec/java_home -v 17+` (macOS, which covers `/Library/Java/JavaVirtualMachines/*`) → Homebrew keg-only globs `/opt/homebrew/opt/openjdk*` and `/usr/local/opt/openjdk*` (macOS) → `/usr/lib/jvm/*` (Linux). Falls through to the existing friendly "Java runtime not found" error when no JDK is installed.
+- Per-probe `java -version` timeout is 2s (down from 5s); a healthy JDK responds in <100ms, so 2s is plenty of slack and bounds the worst-case startup latency on hosts with multiple JDKs in `/usr/lib/jvm`.
 - Error message at the Java-stub branch refined to suggest the install command and note that the plugin auto-discovers on restart (no manual `JAVA_HOME` setup required).
 - `numeric_planner` docstring updated to document the auto-discovery behavior.
 

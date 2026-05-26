@@ -227,21 +227,6 @@ def run_test_body() -> int:
             f"Planner call wrote to stdout (would corrupt MCP JSONRPC): {captured!r}"
     test("planners leave stdout clean (no MCP pollution)", test_no_stdout_pollution)
 
-    def _has_non_path_jdk_candidate() -> bool:
-        # Locations the module-load probe inspects, mirrored here so the test
-        # only runs when there's actually something to find.
-        import glob as _glob
-        sysname = sys.platform
-        if sysname == "darwin":
-            return bool(
-                _glob.glob("/Library/Java/JavaVirtualMachines/*/Contents/Home")
-                or _glob.glob("/opt/homebrew/opt/openjdk*/libexec/openjdk.jdk/Contents/Home")
-                or _glob.glob("/usr/local/opt/openjdk*/libexec/openjdk.jdk/Contents/Home")
-            )
-        if sysname.startswith("linux"):
-            return bool(_glob.glob("/usr/lib/jvm/*/bin/java"))
-        return False
-
     def test_java_version_parser():
         from solver_server import _parse_java_version_output as p
         # Java 9+: leading major matches the language version.
@@ -255,28 +240,31 @@ def run_test_body() -> int:
     test("Java version parser handles 8/11/17/21 stderr formats",
          test_java_version_parser)
 
-    if _has_non_path_jdk_candidate():
-        def test_jre_autodiscovery():
-            # Module-load probe must export a working JAVA_HOME so ENHSP
-            # subprocesses inherit a usable Java. Verifies the actual
-            # user-facing contract (env vars set by import), not just the
-            # helper return value, and enforces the >=17 gate end-to-end.
-            from solver_server import _parse_java_version_output, MIN_JAVA_MAJOR
-            assert "JAVA_HOME" in os.environ, \
-                "Candidate JDK exists but module-load probe did not set JAVA_HOME"
-            java_bin = os.path.join(os.environ["JAVA_HOME"], "bin", "java")
-            assert os.path.isfile(java_bin), \
-                f"JAVA_HOME points to missing java binary: {java_bin}"
-            rc = subprocess.run(
-                [java_bin, "-version"], capture_output=True, text=True, timeout=5,
-            )
-            assert rc.returncode == 0, \
-                f"java -version failed for auto-discovered JAVA_HOME: {rc.stderr!r}"
-            major = _parse_java_version_output((rc.stderr or "") + (rc.stdout or ""))
-            assert major is not None and major >= MIN_JAVA_MAJOR, \
-                f"Auto-discovered Java is {major}, must be >= {MIN_JAVA_MAJOR}"
-        test("_discover_java_home exports JAVA_HOME with major >= 17",
-             test_jre_autodiscovery)
+    def test_discover_java_home_contract():
+        # Contract: _discover_java_home returns either None (PATH java already
+        # works at >=17, OR nothing usable found) or a path whose bin/java is
+        # a working JDK >= MIN_JAVA_MAJOR. Verifies the returned path's
+        # eligibility end-to-end without depending on filesystem-shape
+        # assumptions about where JDKs live.
+        from solver_server import (
+            _discover_java_home, _parse_java_version_output, MIN_JAVA_MAJOR,
+        )
+        result = _discover_java_home()
+        if result is None:
+            return  # no mutation needed / nothing found — both valid
+        java_bin = os.path.join(result, "bin", "java")
+        assert os.path.isfile(java_bin), \
+            f"_discover_java_home returned path missing bin/java: {java_bin}"
+        rc = subprocess.run(
+            [java_bin, "-version"], capture_output=True, text=True, timeout=2,
+        )
+        assert rc.returncode == 0, \
+            f"java -version failed for discovered JAVA_HOME: {rc.stderr!r}"
+        major = _parse_java_version_output((rc.stderr or "") + (rc.stdout or ""))
+        assert major is not None and major >= MIN_JAVA_MAJOR, \
+            f"Discovered Java is {major}, must be >= {MIN_JAVA_MAJOR}"
+    test("_discover_java_home only returns paths to working JDKs >= 17",
+         test_discover_java_home_contract)
 
     def test_classic_planner_no_cwd_pollution():
         # Regression: Fast Downward writes `output.sas` to CWD. The server must pin

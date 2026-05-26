@@ -47,7 +47,7 @@ def _java_major(java_bin: str) -> Optional[int]:
     """Return the major version of `java_bin`, or None if it doesn't run."""
     try:
         r = subprocess.run(
-            [java_bin, "-version"], capture_output=True, text=True, timeout=5,
+            [java_bin, "-version"], capture_output=True, text=True, timeout=2,
         )
     except (subprocess.TimeoutExpired, OSError):
         return None
@@ -58,7 +58,14 @@ def _java_major(java_bin: str) -> Optional[int]:
 
 def _discover_java_home() -> Optional[str]:
     """Locate a working JDK >= MIN_JAVA_MAJOR on the host and return its
-    JAVA_HOME-style path.
+    JAVA_HOME-style path, or None if no mutation is needed.
+
+    Returns None in two cases: (a) `java` on PATH already works at >=17 —
+    ENHSP will resolve it on its own, no mutation needed; (b) nothing usable
+    was found — fall through to the existing friendly "no Java" error.
+
+    Otherwise returns a JAVA_HOME-style path; module-load then exports it
+    and prepends `<path>/bin` to PATH so ENHSP subprocesses inherit it.
 
     ENHSP shells out to bare `java`; on macOS the default `/usr/bin/java` is a
     stub that errors unless a JDK is registered under /Library/Java, and
@@ -75,6 +82,13 @@ def _discover_java_home() -> Optional[str]:
         v = _java_major(java_bin)
         return v if v is not None and v >= MIN_JAVA_MAJOR else None
 
+    # If `java` on PATH already works at >=17, ENHSP will resolve it on its own
+    # — no mutation needed. Also short-circuits the worst-case latency of
+    # globbing every JDK on the host.
+    bare = shutil.which("java")
+    if bare and _eligible(bare) is not None:
+        return None
+
     existing = os.environ.get("JAVA_HOME")
     if existing and _eligible(os.path.join(existing, "bin", "java")) is not None:
         return existing
@@ -85,7 +99,7 @@ def _discover_java_home() -> Optional[str]:
         try:
             r = subprocess.run(
                 ["/usr/libexec/java_home", "-v", f"{MIN_JAVA_MAJOR}+"],
-                capture_output=True, text=True, timeout=5,
+                capture_output=True, text=True, timeout=2,
             )
             if r.returncode == 0:
                 path = r.stdout.strip()
@@ -370,10 +384,12 @@ def numeric_planner(
     Use this when the domain declares :functions; for purely classical domains,
     classic_planner is faster. Does NOT support durative/temporal actions.
 
-    Requires Java OpenJDK 17+ at runtime. The server auto-discovers JDK installs
-    not on PATH (macOS /Library/Java, Homebrew keg-only openjdk under
-    /opt/homebrew/opt and /usr/local/opt; Linux /usr/lib/jvm) at startup, so no
-    manual JAVA_HOME setup is needed. If no JDK is installed:
+    Requires Java OpenJDK 17+ at runtime. If `java` on PATH already works at
+    >=17, no env mutation happens. Otherwise the server auto-discovers JDK
+    installs not on PATH (macOS: `/usr/libexec/java_home -v 17+`, which covers
+    `/Library/Java/JavaVirtualMachines/*`, plus Homebrew keg-only openjdk under
+    /opt/homebrew/opt and /usr/local/opt; Linux: /usr/lib/jvm) at startup, so
+    no manual JAVA_HOME setup is needed. If no JDK is installed:
       - macOS (system Java stub detected): returns
         {"error": True, "message": "Java runtime not found — required by ENHSP. ..."}
       - Linux/Windows (JVM-launch failures look different across distros):
