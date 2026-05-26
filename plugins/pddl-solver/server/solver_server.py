@@ -311,10 +311,9 @@ def _solve(engine_name: str, domain: str, problem: str,
         if "Unable to locate a Java Runtime" in log:
             message = (
                 "Java runtime not found — required by ENHSP. "
-                "Install OpenJDK 17+ (macOS: `brew install openjdk`; "
-                "Linux: `apt install openjdk-17-jdk`) and restart the plugin — "
-                "it auto-discovers keg-only Homebrew installs and Linux installs "
-                "under /usr/lib/jvm with no manual JAVA_HOME needed."
+                "Install OpenJDK 17+ (`brew install openjdk`) and restart "
+                "the plugin — it auto-discovers keg-only Homebrew installs "
+                "with no manual JAVA_HOME needed."
             )
         else:
             message = f"Planner failed with status {status}"

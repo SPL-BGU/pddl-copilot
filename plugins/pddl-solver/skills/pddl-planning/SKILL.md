@@ -43,5 +43,5 @@ Both work. When the user provides PDDL inline or you need to create PDDL, pass t
 ### If a tool returns an error:
 
 - For `classic_planner`: ensure the domain is classical PDDL (no `:functions`). Try a different strategy.
-- For `numeric_planner`: ensure Java (OpenJDK 17+) is installed. On HPC: `module load Java/17` or similar.
+- For `numeric_planner`: install OpenJDK 17+ (`brew install openjdk` on macOS, `apt install openjdk-17-jdk` on Linux) and restart the plugin — it auto-discovers JDK installs not on PATH (Homebrew keg-only, `/usr/lib/jvm`). On HPC: `module load Java/17` or similar.
 - For PDDL parse errors: check domain/problem syntax.
