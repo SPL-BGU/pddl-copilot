@@ -227,6 +227,45 @@ def run_test_body() -> int:
             f"Planner call wrote to stdout (would corrupt MCP JSONRPC): {captured!r}"
     test("planners leave stdout clean (no MCP pollution)", test_no_stdout_pollution)
 
+    def test_java_version_parser():
+        from solver_server import _parse_java_version_output as p
+        # Java 9+: leading major matches the language version.
+        assert p('openjdk version "17.0.2" 2022-01-18') == 17
+        assert p('openjdk version "21" 2023-09-19') == 21
+        assert p('openjdk version "11.0.16" 2022-07-19') == 11
+        # Pre-Java-9: "1.8.0_xyz" → caller sees 8, not 1.
+        assert p('java version "1.8.0_321"') == 8
+        assert p('') is None
+        assert p('something irrelevant') is None
+    test("Java version parser handles 8/11/17/21 stderr formats",
+         test_java_version_parser)
+
+    def test_discover_java_home_contract():
+        # Contract: _discover_java_home returns either None (PATH java already
+        # works at >=17, OR nothing usable found) or a path whose bin/java is
+        # a working JDK >= MIN_JAVA_MAJOR. Verifies the returned path's
+        # eligibility end-to-end without depending on filesystem-shape
+        # assumptions about where JDKs live.
+        from solver_server import (
+            _discover_java_home, _parse_java_version_output, MIN_JAVA_MAJOR,
+        )
+        result = _discover_java_home()
+        if result is None:
+            return  # no mutation needed / nothing found — both valid
+        java_bin = os.path.join(result, "bin", "java")
+        assert os.path.isfile(java_bin), \
+            f"_discover_java_home returned path missing bin/java: {java_bin}"
+        rc = subprocess.run(
+            [java_bin, "-version"], capture_output=True, text=True, timeout=2,
+        )
+        assert rc.returncode == 0, \
+            f"java -version failed for discovered JAVA_HOME: {rc.stderr!r}"
+        major = _parse_java_version_output((rc.stderr or "") + (rc.stdout or ""))
+        assert major is not None and major >= MIN_JAVA_MAJOR, \
+            f"Discovered Java is {major}, must be >= {MIN_JAVA_MAJOR}"
+    test("_discover_java_home only returns paths to working JDKs >= 17",
+         test_discover_java_home_contract)
+
     def test_classic_planner_no_cwd_pollution():
         # Regression: Fast Downward writes `output.sas` to CWD. The server must pin
         # CWD to its request-scoped temp dir so solves work in read-only envs
