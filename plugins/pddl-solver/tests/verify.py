@@ -227,6 +227,57 @@ def run_test_body() -> int:
             f"Planner call wrote to stdout (would corrupt MCP JSONRPC): {captured!r}"
     test("planners leave stdout clean (no MCP pollution)", test_no_stdout_pollution)
 
+    def _has_non_path_jdk_candidate() -> bool:
+        # Locations the module-load probe inspects, mirrored here so the test
+        # only runs when there's actually something to find.
+        import glob as _glob
+        sysname = sys.platform
+        if sysname == "darwin":
+            return bool(
+                _glob.glob("/Library/Java/JavaVirtualMachines/*/Contents/Home")
+                or _glob.glob("/opt/homebrew/opt/openjdk*/libexec/openjdk.jdk/Contents/Home")
+                or _glob.glob("/usr/local/opt/openjdk*/libexec/openjdk.jdk/Contents/Home")
+            )
+        if sysname.startswith("linux"):
+            return bool(_glob.glob("/usr/lib/jvm/*/bin/java"))
+        return False
+
+    def test_java_version_parser():
+        from solver_server import _parse_java_version_output as p
+        # Java 9+: leading major matches the language version.
+        assert p('openjdk version "17.0.2" 2022-01-18') == 17
+        assert p('openjdk version "21" 2023-09-19') == 21
+        assert p('openjdk version "11.0.16" 2022-07-19') == 11
+        # Pre-Java-9: "1.8.0_xyz" → caller sees 8, not 1.
+        assert p('java version "1.8.0_321"') == 8
+        assert p('') is None
+        assert p('something irrelevant') is None
+    test("Java version parser handles 8/11/17/21 stderr formats",
+         test_java_version_parser)
+
+    if _has_non_path_jdk_candidate():
+        def test_jre_autodiscovery():
+            # Module-load probe must export a working JAVA_HOME so ENHSP
+            # subprocesses inherit a usable Java. Verifies the actual
+            # user-facing contract (env vars set by import), not just the
+            # helper return value, and enforces the >=17 gate end-to-end.
+            from solver_server import _parse_java_version_output, MIN_JAVA_MAJOR
+            assert "JAVA_HOME" in os.environ, \
+                "Candidate JDK exists but module-load probe did not set JAVA_HOME"
+            java_bin = os.path.join(os.environ["JAVA_HOME"], "bin", "java")
+            assert os.path.isfile(java_bin), \
+                f"JAVA_HOME points to missing java binary: {java_bin}"
+            rc = subprocess.run(
+                [java_bin, "-version"], capture_output=True, text=True, timeout=5,
+            )
+            assert rc.returncode == 0, \
+                f"java -version failed for auto-discovered JAVA_HOME: {rc.stderr!r}"
+            major = _parse_java_version_output((rc.stderr or "") + (rc.stdout or ""))
+            assert major is not None and major >= MIN_JAVA_MAJOR, \
+                f"Auto-discovered Java is {major}, must be >= {MIN_JAVA_MAJOR}"
+        test("_discover_java_home exports JAVA_HOME with major >= 17",
+             test_jre_autodiscovery)
+
     def test_classic_planner_no_cwd_pollution():
         # Regression: Fast Downward writes `output.sas` to CWD. The server must pin
         # CWD to its request-scoped temp dir so solves work in read-only envs

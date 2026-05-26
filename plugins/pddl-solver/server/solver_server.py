@@ -9,14 +9,125 @@ from contextlib import contextmanager
 from typing import Annotated, Literal, Optional
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+import glob
 import os
+import platform
+import re
 import shutil
+import subprocess
 import time
 import uuid
 
 from unified_planning.io import PDDLReader
 from unified_planning.shortcuts import OneshotPlanner, get_environment
 import unified_planning.engines.results as up_results
+
+
+MIN_JAVA_MAJOR = 17
+
+
+def _parse_java_version_output(blob: str) -> Optional[int]:
+    """Extract the major version from `java -version` output. Java writes the
+    version to stderr in one of two forms:
+      Java 9+:  `openjdk version "17.0.2" 2022-01-18`
+      Java ≤8: `java version "1.8.0_321"` — the leading `1.` is stripped here
+                so the caller sees 8, not 1.
+    Returns None if the blob does not contain a parseable version line.
+    """
+    m = re.search(r'version\s+"(\d+)(?:\.(\d+))?', blob)
+    if not m:
+        return None
+    major = int(m.group(1))
+    if major == 1 and m.group(2):
+        return int(m.group(2))
+    return major
+
+
+def _java_major(java_bin: str) -> Optional[int]:
+    """Return the major version of `java_bin`, or None if it doesn't run."""
+    try:
+        r = subprocess.run(
+            [java_bin, "-version"], capture_output=True, text=True, timeout=5,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    if r.returncode != 0:
+        return None
+    return _parse_java_version_output((r.stderr or "") + (r.stdout or ""))
+
+
+def _discover_java_home() -> Optional[str]:
+    """Locate a working JDK >= MIN_JAVA_MAJOR on the host and return its
+    JAVA_HOME-style path.
+
+    ENHSP shells out to bare `java`; on macOS the default `/usr/bin/java` is a
+    stub that errors unless a JDK is registered under /Library/Java, and
+    Homebrew's `openjdk` formula is keg-only (never registered there). Linux
+    has analogous gaps when JDK lives under /usr/lib/jvm but no
+    update-alternatives link is set. This probe finds those installs so
+    end-users do not need to set JAVA_HOME manually.
+
+    Versions < 17 are rejected even if installed — ENHSP requires modern Java,
+    and falling through to the existing "no Java" error is more actionable
+    than letting ENHSP fail with a JVM-internal stack trace.
+    """
+    def _eligible(java_bin: str) -> Optional[int]:
+        v = _java_major(java_bin)
+        return v if v is not None and v >= MIN_JAVA_MAJOR else None
+
+    existing = os.environ.get("JAVA_HOME")
+    if existing and _eligible(os.path.join(existing, "bin", "java")) is not None:
+        return existing
+
+    system = platform.system()
+
+    if system == "Darwin":
+        try:
+            r = subprocess.run(
+                ["/usr/libexec/java_home", "-v", f"{MIN_JAVA_MAJOR}+"],
+                capture_output=True, text=True, timeout=5,
+            )
+            if r.returncode == 0:
+                path = r.stdout.strip()
+                if path and _eligible(os.path.join(path, "bin", "java")) is not None:
+                    return path
+        except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+            pass
+
+        brew_globs = [
+            "/opt/homebrew/opt/openjdk*/libexec/openjdk.jdk/Contents/Home",
+            "/usr/local/opt/openjdk*/libexec/openjdk.jdk/Contents/Home",
+        ]
+        brew_candidates: list[tuple[int, str]] = []
+        for g in brew_globs:
+            for path in glob.glob(g):
+                v = _eligible(os.path.join(path, "bin", "java"))
+                if v is not None:
+                    brew_candidates.append((v, path))
+        if brew_candidates:
+            return max(brew_candidates, key=lambda x: x[0])[1]
+
+    if system == "Linux":
+        linux_candidates: list[tuple[int, str]] = []
+        for java_bin in glob.glob("/usr/lib/jvm/*/bin/java"):
+            v = _eligible(java_bin)
+            if v is not None:
+                # JAVA_HOME is two dirs up from bin/java.
+                linux_candidates.append(
+                    (v, os.path.dirname(os.path.dirname(java_bin)))
+                )
+        if linux_candidates:
+            return max(linux_candidates, key=lambda x: x[0])[1]
+
+    return None
+
+
+_java_home = _discover_java_home()
+if _java_home:
+    os.environ["JAVA_HOME"] = _java_home
+    os.environ["PATH"] = (
+        os.path.join(_java_home, "bin") + os.pathsep + os.environ.get("PATH", "")
+    )
 
 # Silence the UP factory credits banner — it writes ANSI-coloured text to
 # sys.stdout, which corrupts the MCP stdio JSONRPC channel on the client.
@@ -184,7 +295,13 @@ def _solve(engine_name: str, domain: str, problem: str,
         # actionable, just not auto-classified.
         trimmed_log = log[-MAX_FAILURE_LOG_CHARS:] if log else ""
         if "Unable to locate a Java Runtime" in log:
-            message = "Java runtime not found — required by ENHSP. Install OpenJDK 17+."
+            message = (
+                "Java runtime not found — required by ENHSP. "
+                "Install OpenJDK 17+ (macOS: `brew install openjdk`; "
+                "Linux: `apt install openjdk-17-jdk`) and restart the plugin — "
+                "it auto-discovers keg-only Homebrew installs and Linux installs "
+                "under /usr/lib/jvm with no manual JAVA_HOME needed."
+            )
         else:
             message = f"Planner failed with status {status}"
         return {
@@ -253,10 +370,12 @@ def numeric_planner(
     Use this when the domain declares :functions; for purely classical domains,
     classic_planner is faster. Does NOT support durative/temporal actions.
 
-    Requires Java OpenJDK 17+ at runtime. If Java is missing:
+    Requires Java OpenJDK 17+ at runtime. The server auto-discovers JDK installs
+    not on PATH (macOS /Library/Java, Homebrew keg-only openjdk under
+    /opt/homebrew/opt and /usr/local/opt; Linux /usr/lib/jvm) at startup, so no
+    manual JAVA_HOME setup is needed. If no JDK is installed:
       - macOS (system Java stub detected): returns
-        {"error": True, "message": "Java runtime not found — required by ENHSP.
-        Install OpenJDK 17+."}
+        {"error": True, "message": "Java runtime not found — required by ENHSP. ..."}
       - Linux/Windows (JVM-launch failures look different across distros):
         returns {"error": True, "message": "Planner failed with status ...",
         "log": "..."} — the truncated `log` carries the actual JVM error.
