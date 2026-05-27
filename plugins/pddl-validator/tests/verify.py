@@ -423,16 +423,57 @@ def run_test_body() -> int:
 
     def test_unknown_fluent_structured_precondition_error():
         result = validate_plan(UNKNOWN_FLUENT_DOMAIN, UNKNOWN_FLUENT_PROBLEM, UNKNOWN_FLUENT_PLAN, verbose=False)
-        # New behavior: structured PRECONDITION_ERROR verdict, not a server error.
-        # If pyvalidator changes and returns INVALID natively, that's also acceptable
-        # (still a verdict, still not an error).
         if result.get("error") is True:
             raise AssertionError(
                 f"expected structured verdict, got server error: {result['message']!r}"
             )
         assert result["valid"] is False, result
-        assert result.get("status") in ("PRECONDITION_ERROR", "INVALID"), result
+        # Pin to PRECONDITION_ERROR specifically — if pyvalidator changes and starts
+        # returning a native INVALID, this test SHOULD fail loudly so we can delete
+        # the in-validator heuristic rather than leave dead code shipping.
+        assert result.get("status") == "PRECONDITION_ERROR", result
     test("validate_plan (unknown fluent → structured precondition error)", test_unknown_fluent_structured_precondition_error)
+
+    def test_unknown_fluent_verbose_true_preserves_details_key():
+        # The PRECONDITION_ERROR branch must honor the docstring contract that
+        # verbose=True returns {valid, status, report, details} — without this,
+        # callers (e.g. pddl-fixing skill) hit KeyError on result["details"].
+        result = validate_plan(UNKNOWN_FLUENT_DOMAIN, UNKNOWN_FLUENT_PROBLEM, UNKNOWN_FLUENT_PLAN, verbose=True)
+        assert result.get("error") is not True, result
+        assert result["valid"] is False, result
+        assert result.get("status") == "PRECONDITION_ERROR", result
+        assert "details" in result, f"verbose=True must include 'details' key: {result.keys()}"
+    test("validate_plan (PRECONDITION_ERROR verbose=True keeps details)", test_unknown_fluent_verbose_true_preserves_details_key)
+
+    def test_get_state_transition_unknown_fluent_precondition_error():
+        # get_state_transition wraps the same PDDLValidator().validate call as
+        # validate_plan and was previously bubbling the unknown-fluent exception
+        # as a server error too. Fix #4 must apply symmetrically.
+        result = get_state_transition(UNKNOWN_FLUENT_DOMAIN, UNKNOWN_FLUENT_PROBLEM, UNKNOWN_FLUENT_PLAN, verbose=False)
+        if result.get("error") is True:
+            raise AssertionError(
+                f"expected structured verdict, got server error: {result['message']!r}"
+            )
+        assert result["valid"] is False, result
+        assert result.get("status") == "PRECONDITION_ERROR", result
+    test("get_state_transition (unknown fluent → structured precondition error)", test_get_state_transition_unknown_fluent_precondition_error)
+
+    def test_get_state_transition_unknown_fluent_verbose_true_keeps_details():
+        result = get_state_transition(UNKNOWN_FLUENT_DOMAIN, UNKNOWN_FLUENT_PROBLEM, UNKNOWN_FLUENT_PLAN, verbose=True)
+        assert result.get("error") is not True, result
+        assert result["valid"] is False, result
+        assert result.get("status") == "PRECONDITION_ERROR", result
+        assert "details" in result, f"verbose=True must include 'details' key: {result.keys()}"
+    test("get_state_transition (PRECONDITION_ERROR verbose=True keeps details)", test_get_state_transition_unknown_fluent_verbose_true_keeps_details)
+
+    def test_plan_as_list_literal_rejects_non_string_items():
+        # ast.literal_eval of "[1, 2, 3]" parses to a list — must NOT be silently
+        # written as "1\n2\n3" to the plan file (would crash pyvalidator deeper).
+        # Behavior: fall through to _ensure_file, which raises FileNotFoundError-as-
+        # error-dict with the clearer-shape message.
+        result = validate_plan(DOMAIN, PROBLEM, plan="[1, 2, 3]", verbose=False)
+        assert result.get("error") is True, f"non-string list elements should error, got: {result}"
+    test("validate_plan (plan as list-literal of non-strings → error)", test_plan_as_list_literal_rejects_non_string_items)
 
     print(f"\n{passed + failed} tests: {passed} passed, {failed} failed")
     if failed:

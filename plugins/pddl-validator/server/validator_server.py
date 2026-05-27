@@ -163,10 +163,10 @@ def _ensure_plan_file(plan_input, name: str, req_dir: str) -> str:
             parsed = ast.literal_eval(stripped)
         except (SyntaxError, ValueError):
             parsed = None
-        if isinstance(parsed, list):
+        if isinstance(parsed, list) and all(isinstance(a, str) for a in parsed):
             path = os.path.join(req_dir, name)
             with open(path, "w") as f:
-                f.write("\n".join(str(a) for a in parsed))
+                f.write("\n".join(parsed))
             return path
 
     # Multi-line plan text — write as content so pyvalidator can attempt parse.
@@ -192,6 +192,34 @@ def _syntax_result_to_dict(result, verbose: bool) -> dict:
     }
     if verbose:
         out["details"] = result.to_json()
+    return out
+
+
+def _precondition_error_or_none(e: Exception, verbose: bool) -> dict | None:
+    """Detect pyvalidator's unknown-fluent precondition-lookup exception and
+    re-shape it as a structured INVALID verdict.
+
+    pyvalidator raises (instead of returning a structured INVALID) when a plan
+    references a numeric fluent the problem didn't initialize — common on
+    farmland and zenotravel-numeric broken-plan fixtures. Substring match against
+    pyvalidator's English message is intentionally narrow; if the upstream
+    message changes (see pddl-pyvalidator), this returns None and the caller
+    falls back to its generic error envelope.
+
+    Returns the structured dict on a match, or None to let the caller decide.
+    The verbose=True shape adds a `details` key so the call-site preserves its
+    documented `{valid, status, report, details}` contract.
+    """
+    msg = str(e)
+    if "does not have a value" not in msg:
+        return None
+    out = {
+        "valid": False,
+        "status": "PRECONDITION_ERROR",
+        "report": msg,
+    }
+    if verbose:
+        out["details"] = {"unknown_fluent": True, "message": msg}
     return out
 
 
@@ -280,7 +308,9 @@ def validate_plan(
                         with get_state_transition, which drops BOTH at verbose=False.)
         Error:         {"error": True, "message": str}
 
-        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR"."""
+        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR",
+        or "PRECONDITION_ERROR" (numeric plan referenced an uninitialized fluent —
+        precondition is unsatisfied; valid is False)."""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -292,18 +322,9 @@ def validate_plan(
         try:
             result = PDDLValidator().validate(dp, pp, plp)
         except Exception as e:
-            msg = str(e)
-            # pyvalidator raises on unknown-fluent precondition lookups instead of
-            # returning a structured INVALID. This happens on numeric domains like
-            # farmland and zenotravel-numeric where a broken plan references a
-            # numeric fluent the problem didn't initialize. Treat as a real
-            # precondition failure (verdict INVALID) rather than a server error.
-            if "does not have a value" in msg:
-                return {
-                    "valid": False,
-                    "status": "PRECONDITION_ERROR",
-                    "report": msg,
-                }
+            precondition_result = _precondition_error_or_none(e, verbose)
+            if precondition_result is not None:
+                return precondition_result
             return {"error": True, "message": f"Validation error: {e}"}
 
         return _syntax_result_to_dict(result, verbose)
@@ -330,6 +351,9 @@ def get_state_transition(
         verbose=False: {"valid": bool, "steps": list, "trajectory": list}
                        (drops BOTH "report" and "details". This is asymmetric with
                         validate_plan, where verbose=False keeps "report".)
+        Precondition:  {"valid": False, "status": "PRECONDITION_ERROR", "report": str, ...}
+                       (numeric plan referenced an uninitialized fluent — verbose=True
+                        adds a "details" key; steps/trajectory are not produced)
         Error:         {"error": True, "message": str}"""
     with _request_dir() as rd:
         try:
@@ -343,6 +367,9 @@ def get_state_transition(
             validator = PDDLValidator()
             result = validator.validate(dp, pp, plp)
         except Exception as e:
+            precondition_result = _precondition_error_or_none(e, verbose)
+            if precondition_result is not None:
+                return precondition_result
             return {"error": True, "message": f"Validation error: {e}"}
 
         # Build step-by-step output

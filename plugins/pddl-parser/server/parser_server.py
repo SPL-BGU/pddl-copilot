@@ -14,6 +14,7 @@ from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.types import CallToolResult, TextContent
 from pydantic import Field, ValidationError
+import ast
 import json
 import os
 import re
@@ -172,19 +173,57 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
         return os.path.abspath(stripped)
 
     raise FileNotFoundError(
-        f"PDDL file not found: '{stripped}'. "
-        f"Pass inline PDDL content (starting with '(') or a valid file path."
+        f"PDDL argument {stripped!r} does not look like PDDL content or a file path. "
+        f"PDDL content must start with '(' (e.g. '(define (domain ...) ...)') or be "
+        f"a valid file path. A bare problem name or label is not a usable input."
     )
 
 
 def _ensure_plan_file(plan_input, name: str, req_dir: str) -> str:
     """Materialize a plan into a file, accepting list[str], str content, or path.
-    An empty list produces an empty file (valid for goal-already-satisfied)."""
+    An empty list produces an empty file (valid for goal-already-satisfied).
+
+    Robust to common LLM serialization shapes also handled here:
+    - Python-list-literal string ("['(pick-up a)', '(stack a b)']") → parsed
+      with ast.literal_eval and written as a list when every element is a str.
+    - Multi-line action text → written verbatim; downstream parser handles it.
+
+    Single-token bare labels still fall through to `_ensure_file`'s
+    FileNotFoundError, which now suggests valid input shapes.
+    """
     if isinstance(plan_input, list):
         path = os.path.join(req_dir, name)
         with open(path, "w") as f:
-            f.write("\n".join(plan_input))
+            f.write("\n".join(str(a) for a in plan_input))
         return path
+
+    if not isinstance(plan_input, str):
+        raise FileNotFoundError(
+            f"plan must be a list of action strings, a content string, or a file path; "
+            f"got {type(plan_input).__name__}."
+        )
+
+    stripped = plan_input.strip()
+
+    # Python-list-literal string: "['(pick-up a)', '(stack a b)']"
+    if stripped.startswith("[") and stripped.endswith("]"):
+        try:
+            parsed = ast.literal_eval(stripped)
+        except (SyntaxError, ValueError):
+            parsed = None
+        if isinstance(parsed, list) and all(isinstance(a, str) for a in parsed):
+            path = os.path.join(req_dir, name)
+            with open(path, "w") as f:
+                f.write("\n".join(parsed))
+            return path
+
+    # Multi-line plan text — write as content so the parser can attempt parse.
+    if "\n" in plan_input:
+        path = os.path.join(req_dir, name)
+        with open(path, "w") as f:
+            f.write(plan_input)
+        return path
+
     return _ensure_file(plan_input, name, req_dir)
 
 

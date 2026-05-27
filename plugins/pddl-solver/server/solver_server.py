@@ -291,8 +291,9 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
         return expanded
 
     raise FileNotFoundError(
-        f"PDDL file not found: '{stripped}'. "
-        f"Pass inline PDDL content or a valid file path."
+        f"PDDL argument {stripped!r} does not look like PDDL content or a file path. "
+        f"PDDL content must start with '(' (e.g. '(define (domain ...) ...)') or be "
+        f"a valid file path. A bare problem name or label is not a usable input."
     )
 
 
@@ -376,7 +377,10 @@ def _solve(engine_name: str, domain: str, problem: str,
                 "with no manual JAVA_HOME needed."
             )
         elif trimmed_log:
-            tail = trimmed_log[-400:]
+            # Bound the tail by MAX_FAILURE_LOG_CHARS so the env-var lever
+            # (used by small-context callers like Ollama) cannot be exceeded.
+            # The full trimmed_log is still returned in the `log` field.
+            tail = trimmed_log[-min(400, MAX_FAILURE_LOG_CHARS):]
             message = f"Planner failed with status {status}. log_tail: {tail!r}"
         else:
             message = f"Planner failed with status {status}"

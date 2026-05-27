@@ -623,6 +623,36 @@ def run_test_body() -> int:
         )
     test("wrapper: diff_states missing state_after → structured payload", test_wrapper_diff_states_missing_state_after)
 
+    # -----------------------------------------------------------------------
+    # Fix #2 (parser-side): _ensure_plan_file robustness in get_trajectory.
+    # Mirror of the validator-side tests — the parser's get_trajectory must
+    # accept the same LLM serialization shapes the validator now accepts.
+    # -----------------------------------------------------------------------
+    def test_get_trajectory_plan_as_list_literal_string():
+        result = get_trajectory(DOMAIN, PROBLEM, plan="['(pick-up a)', '(stack a b)']")
+        assert "error" not in result, f"list-literal string rejected: {result}"
+        assert result["num_steps"] == 2, result
+    test("get_trajectory (plan as list-literal string)", test_get_trajectory_plan_as_list_literal_string)
+
+    def test_get_trajectory_plan_as_newline_separated_parens():
+        result = get_trajectory(DOMAIN, PROBLEM, plan="(pick-up a)\n(stack a b)")
+        assert "error" not in result, f"newline-separated rejected: {result}"
+        assert result["num_steps"] == 2, result
+    test("get_trajectory (plan as newline-separated parens)", test_get_trajectory_plan_as_newline_separated_parens)
+
+    def test_get_trajectory_plan_as_bare_label_clear_error():
+        result = get_trajectory(DOMAIN, PROBLEM, plan="BW-rand-3")
+        assert result.get("error") is True, f"expected error, got: {result}"
+        msg = result["message"].lower()
+        assert "bw-rand-3" in msg, msg
+        assert "list" in msg or "path" in msg or "label" in msg or "shape" in msg, msg
+    test("get_trajectory (plan as bare label → clear error)", test_get_trajectory_plan_as_bare_label_clear_error)
+
+    def test_get_trajectory_plan_as_list_literal_non_strings():
+        result = get_trajectory(DOMAIN, PROBLEM, plan="[1, 2, 3]")
+        assert result.get("error") is True, f"non-string list elements should error, got: {result}"
+    test("get_trajectory (plan as list-literal of non-strings → error)", test_get_trajectory_plan_as_list_literal_non_strings)
+
     print(f"\n{passed + failed + skipped} tests: {passed} passed, {failed} failed, {skipped} skipped")
     if failed:
         print(f"\n{RED}{failed} test(s) failed.{NC}")
