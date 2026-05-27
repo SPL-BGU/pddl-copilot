@@ -279,6 +279,64 @@ def run_test_body() -> int:
             "classic_planner left output.sas in CWD — solver not chdir'ing into its request dir"
     test("classic_planner leaves CWD clean", test_classic_planner_no_cwd_pollution)
 
+    # -----------------------------------------------------------------------
+    # FastMCP wrapper tests — exercise mcp.call_tool so pydantic ValidationError
+    # flows through Tool.run -> ToolError and our subclass converts it to a
+    # structured payload. Bare-function tests above bypass FastMCP.
+    # -----------------------------------------------------------------------
+    import asyncio
+    import json as _json
+    from solver_server import mcp
+    from mcp.types import CallToolResult
+
+    def _call(tool_name, arguments):
+        return asyncio.run(mcp.call_tool(tool_name, arguments))
+
+    def _assert_structured_arg_error(result, *, tool, expected_missing, expected_supplied):
+        assert isinstance(result, CallToolResult), f"expected CallToolResult, got {type(result).__name__}"
+        assert result.isError is True, f"expected isError=True, got {result.isError}"
+        text = result.content[0].text
+        payload = _json.loads(text)
+        assert payload.get("error") is True, payload
+        assert payload.get("errcode") == "missing_required_arg", payload
+        assert payload.get("tool") == tool, payload
+        for m in expected_missing:
+            assert m in payload["missing"], f"{m!r} not in missing: {payload['missing']}"
+            assert m in payload["required"], f"{m!r} not in required: {payload['required']}"
+        for s in expected_supplied:
+            assert s in payload["supplied"], f"{s!r} not in supplied: {payload['supplied']}"
+        assert isinstance(payload.get("message"), str) and payload["message"], payload
+
+    def test_wrapper_classic_planner_missing_problem():
+        result = _call("classic_planner", {"domain": DOMAIN})
+        _assert_structured_arg_error(
+            result,
+            tool="classic_planner",
+            expected_missing=["problem"],
+            expected_supplied=["domain"],
+        )
+    test("wrapper: classic_planner missing problem → structured payload", test_wrapper_classic_planner_missing_problem)
+
+    def test_wrapper_numeric_planner_missing_problem():
+        result = _call("numeric_planner", {"domain": NUMERIC_DOMAIN})
+        _assert_structured_arg_error(
+            result,
+            tool="numeric_planner",
+            expected_missing=["problem"],
+            expected_supplied=["domain"],
+        )
+    test("wrapper: numeric_planner missing problem → structured payload", test_wrapper_numeric_planner_missing_problem)
+
+    def test_wrapper_save_plan_missing_plan():
+        result = _call("save_plan", {"name": "test"})
+        _assert_structured_arg_error(
+            result,
+            tool="save_plan",
+            expected_missing=["plan"],
+            expected_supplied=["name"],
+        )
+    test("wrapper: save_plan missing plan → structured payload", test_wrapper_save_plan_missing_plan)
+
     print(f"\n{passed + failed} tests: {passed} passed, {failed} failed")
     if failed:
         print(f"\n{RED}Tests failed.{NC}")

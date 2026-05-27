@@ -8,8 +8,11 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 from contextlib import contextmanager
 from typing import Annotated, Literal, Optional
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
+from mcp.server.fastmcp.exceptions import ToolError
+from mcp.types import CallToolResult, TextContent
+from pydantic import Field, ValidationError
 import glob
+import json
 import os
 import platform
 import re
@@ -21,6 +24,63 @@ import uuid
 from unified_planning.io import PDDLReader
 from unified_planning.shortcuts import OneshotPlanner, get_environment
 import unified_planning.engines.results as up_results
+
+
+class _StructuredArgErrorFastMCP(FastMCP):
+    """FastMCP subclass that converts pydantic arg-validation errors into a
+    one-line structured payload so small models can parse and recover.
+
+    FastMCP wraps every tool exception in ToolError("Error executing tool ...");
+    when the inner cause is a pydantic ValidationError we emit a fixed 7-key
+    payload (error/errcode/tool/missing/required/supplied/message) as
+    isError=True content. Non-ValidationError ToolErrors are re-raised so the
+    existing lowlevel error path is unchanged."""
+
+    async def call_tool(self, name, arguments, *args, **kwargs):
+        try:
+            return await super().call_tool(name, arguments, *args, **kwargs)
+        except ToolError as e:
+            cause = getattr(e, "__cause__", None)
+            if not isinstance(cause, ValidationError):
+                raise
+            tool = self._tool_manager.get_tool(name)
+            if tool is None:
+                raise
+            required = [
+                (fi.alias or fname)
+                for fname, fi in tool.fn_metadata.arg_model.model_fields.items()
+                if fi.is_required()
+            ]
+            supplied = list((arguments or {}).keys())
+            errs = cause.errors()
+            missing = [
+                str(err["loc"][0])
+                for err in errs
+                if err.get("type") == "missing" and err.get("loc")
+            ]
+            if missing:
+                errcode = "missing_required_arg"
+                message = (
+                    f"{name}: missing required argument {missing[0]!r}. "
+                    f"Required args: {', '.join(required)}."
+                )
+            else:
+                errcode = "arg_validation_failed"
+                first = errs[0] if errs else {"msg": "invalid"}
+                message = f"{name}: argument validation failed — {first.get('msg', 'invalid')}."
+            payload = {
+                "error": True,
+                "errcode": errcode,
+                "tool": name,
+                "missing": missing,
+                "required": required,
+                "supplied": supplied,
+                "message": message,
+            }
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=json.dumps(payload))],
+            )
 
 
 MIN_JAVA_MAJOR = 17
@@ -147,7 +207,7 @@ if _java_home:
 # sys.stdout, which corrupts the MCP stdio JSONRPC channel on the client.
 get_environment().credits_stream = None
 
-mcp = FastMCP("pddl-solver")
+mcp = _StructuredArgErrorFastMCP("pddl-solver")
 
 # ---------------------------------------------------------------------------
 # Configuration (overridable via environment variables)
@@ -315,6 +375,9 @@ def _solve(engine_name: str, domain: str, problem: str,
                 "the plugin — it auto-discovers keg-only Homebrew installs "
                 "with no manual JAVA_HOME needed."
             )
+        elif trimmed_log:
+            tail = trimmed_log[-400:]
+            message = f"Planner failed with status {status}. log_tail: {tail!r}"
         else:
             message = f"Planner failed with status {status}"
         return {
