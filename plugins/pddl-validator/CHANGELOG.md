@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.1.0
+
+Sweep-5 tool-use error UX improvements. Motivated by ~17.6k silent failures observed when small models (Qwen3.5_0.8B, Qwen3.5_4B) called tools with missing or wrong-typed args and FastMCP's pydantic dump was unparseable; see the sweep-5 report in the experiments sibling repo for full numbers.
+
+- **Structured arg-error payload.** A `_StructuredArgErrorFastMCP` subclass intercepts pydantic `ValidationError` and emits a fixed 7-key payload (`error/errcode/tool/missing/required/supplied/message`) as `isError=True` content, instead of FastMCP's opaque `"Error executing tool ..."` string. `errcode` is one of `missing_required_arg` or `arg_validation_failed`; the latter now names the offending argument from pydantic's `loc[0]`.
+- **`validate_plan` and `get_state_transition`: structured `PRECONDITION_ERROR`.** pyvalidator raises (rather than returning a structured INVALID) when a numeric plan references a fluent the problem didn't initialize — common on farmland and zenotravel-numeric broken-plan fixtures. Both tools now catch this and return `{valid: False, status: "PRECONDITION_ERROR", report: msg}`; `verbose=True` adds the documented `details` key.
+- **`PRECONDITION_ERROR` is a new status enum value.** Additive: returned only on the unknown-fluent path where previously the response was `{error: True, message: "Validation error: ..."}`. Existing `VALID/INVALID/SYNTAX_ERROR/STRUCTURE_ERROR` values unchanged.
+- **`_ensure_plan_file` accepts more LLM serialization shapes.** Python-list-literal strings (`"['(pick-up a)', '(stack a b)']"`) are parsed with `ast.literal_eval` when every element is a string; multi-line plan text (with or without surrounding parens) is written verbatim and let through to pyvalidator. Bare single-token labels (e.g. `"BW-rand-3"`) still error, with a clearer message naming valid input shapes.
+- **`mcp` / `pydantic` are now version-pinned** in `requirements.txt` to `mcp>=1.27,<2.0` and `pydantic>=2.13,<3.0`. The wrapper above touches FastMCP's `_tool_manager` / `tool.fn_metadata.arg_model` (underscored / undocumented), so an MCP-SDK major bump could break it; the pin upper-bounds the upgrade boundary.
+
 ## 3.0.0 — BREAKING
 
 **Tool surface change.** `validate_pddl_syntax` is split into three task-aligned tools to eliminate the argument-shape polymorphism that was the dominant cause of plan-validation failures in downstream LLM consumers (a `(domain, problem)` call returns the consistency verdict, *not* the plan verdict — the previous name "validate_pddl_syntax" did not advertise that gotcha).

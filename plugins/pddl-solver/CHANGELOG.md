@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.4.0
+
+Sweep-5 tool-use error UX improvements. Motivated by ~17.6k silent failures observed when small models (Qwen3.5_0.8B, Qwen3.5_4B) called tools with missing or wrong-typed args and FastMCP's pydantic dump was unparseable; see the sweep-5 report in the experiments sibling repo for full numbers.
+
+- **Structured arg-error payload.** A `_StructuredArgErrorFastMCP` subclass intercepts pydantic `ValidationError` and emits a fixed 7-key payload (`error/errcode/tool/missing/required/supplied/message`) as `isError=True` content, instead of FastMCP's opaque `"Error executing tool ..."` string. `errcode` is one of `missing_required_arg` or `arg_validation_failed`; the latter now names the offending argument from pydantic's `loc[0]`.
+- **Planner-failure `message` carries a `log_tail` fragment.** The `_solve` INTERNAL_ERROR branch now appends a tail of the captured `log` to `message`, so the model can act on the failure mode without parsing the separate `log` field. The tail length is bounded by `min(400, PDDL_MAX_LOG_CHARS)` so the env-var lever (used by small-context callers) cannot be exceeded.
+- **`_ensure_file` error wording is clearer** for inputs that are neither PDDL content nor a file path. Bare problem labels (e.g. `"BW-rand-3"`) now get an actionable message describing what valid input shapes look like.
+- **`mcp` / `pydantic` are now version-pinned** in `requirements.txt` to `mcp>=1.27,<2.0` and `pydantic>=2.13,<3.0`. The wrapper above touches FastMCP's `_tool_manager` / `tool.fn_metadata.arg_model` (underscored / undocumented), so an MCP-SDK major bump could break it; the pin upper-bounds the upgrade boundary.
+
 ## 2.3.1
 
 - **Bug fix:** `numeric_planner` now works on hosts with a JDK installed but not on PATH. ENHSP shells out to bare `java`; on macOS `/usr/bin/java` is a stub that errors unless a JDK is registered under `/Library/Java/JavaVirtualMachines/`, and Homebrew's `openjdk` formula is keg-only (never registered there). Linux had analogous gaps when JDK lives under `/usr/lib/jvm` with no `update-alternatives` link. The server now probes for a working JDK at module load and exports `JAVA_HOME` / prepends to `PATH` so ENHSP subprocesses inherit a usable environment.

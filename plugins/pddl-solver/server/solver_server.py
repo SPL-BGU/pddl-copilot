@@ -26,6 +26,11 @@ from unified_planning.shortcuts import OneshotPlanner, get_environment
 import unified_planning.engines.results as up_results
 
 
+# NOTE: this class is duplicated verbatim in pddl-validator and pddl-parser.
+# The marketplace plugin-isolation rule (.claude/rules/marketplace.md) forbids
+# cross-plugin imports; each plugin must be installable standalone. Don't try
+# to "DRY" this into a shared module — it would break isolation. Fix it in
+# all three places when changing the payload contract.
 class _StructuredArgErrorFastMCP(FastMCP):
     """FastMCP subclass that converts pydantic arg-validation errors into a
     one-line structured payload so small models can parse and recover.
@@ -66,8 +71,10 @@ class _StructuredArgErrorFastMCP(FastMCP):
                 )
             else:
                 errcode = "arg_validation_failed"
-                first = errs[0] if errs else {"msg": "invalid"}
-                message = f"{name}: argument validation failed — {first.get('msg', 'invalid')}."
+                first = errs[0] if errs else {"msg": "invalid", "loc": ("?",)}
+                bad_loc = first.get("loc") or ("?",)
+                bad_arg = str(bad_loc[0])
+                message = f"{name}: argument {bad_arg!r}: {first.get('msg', 'invalid')}."
             payload = {
                 "error": True,
                 "errcode": errcode,

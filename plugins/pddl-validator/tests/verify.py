@@ -387,6 +387,17 @@ def run_test_body() -> int:
         assert result["valid"] is True, f"Expected valid plan, got: {result}"
     test("validate_plan (plan as newline-separated parens)", test_plan_as_newline_separated_parens)
 
+    def test_plan_as_newline_separated_bare_actions_not_rejected_at_shape_gate():
+        # The docstring on _ensure_plan_file claims multi-line plan text is
+        # accepted "with or without surrounding parens". Without parens
+        # pyvalidator likely rejects with a parse error (its concern), but
+        # the plugin's shape gate must NOT short-circuit to a FileNotFoundError.
+        result = validate_plan(DOMAIN, PROBLEM, plan="pick-up a\nstack a b", verbose=False)
+        msg = result.get("message", "")
+        assert "does not look like" not in msg, \
+            f"multi-line bare-no-parens was rejected at the shape gate: {msg!r}"
+    test("validate_plan (multi-line bare actions reach pyvalidator)", test_plan_as_newline_separated_bare_actions_not_rejected_at_shape_gate)
+
     def test_plan_as_bare_label_clear_error():
         # Single-token bare label (e.g. problem name) is not a usable input —
         # the error message should suggest valid input shapes rather than the

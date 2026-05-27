@@ -640,6 +640,17 @@ def run_test_body() -> int:
         assert result["num_steps"] == 2, result
     test("get_trajectory (plan as newline-separated parens)", test_get_trajectory_plan_as_newline_separated_parens)
 
+    def test_get_trajectory_plan_as_newline_separated_bare_actions_not_at_shape_gate():
+        # Mirror of the validator-side test — _ensure_plan_file's multi-line
+        # branch must accept bare-action multi-line input; the parser/pyparsing
+        # below it is free to reject the content with a parse error, but the
+        # plugin must NOT short-circuit at the shape gate.
+        result = get_trajectory(DOMAIN, PROBLEM, plan="pick-up a\nstack a b")
+        msg = result.get("message", "")
+        assert "does not look like" not in msg, \
+            f"multi-line bare-no-parens was rejected at the shape gate: {msg!r}"
+    test("get_trajectory (multi-line bare actions reach parser)", test_get_trajectory_plan_as_newline_separated_bare_actions_not_at_shape_gate)
+
     def test_get_trajectory_plan_as_bare_label_clear_error():
         result = get_trajectory(DOMAIN, PROBLEM, plan="BW-rand-3")
         assert result.get("error") is True, f"expected error, got: {result}"
