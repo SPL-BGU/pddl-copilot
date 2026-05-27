@@ -11,7 +11,9 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated, List, Literal, Optional, Union
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
+from mcp.server.fastmcp.exceptions import ToolError
+from mcp.types import CallToolResult, TextContent
+from pydantic import Field, ValidationError
 import json
 import os
 import re
@@ -21,7 +23,65 @@ import uuid
 
 ParserName = Literal["pddl-plus-parser", "unified-planning"]
 
-mcp = FastMCP("pddl-parser")
+
+class _StructuredArgErrorFastMCP(FastMCP):
+    """FastMCP subclass that converts pydantic arg-validation errors into a
+    one-line structured payload so small models can parse and recover.
+
+    FastMCP wraps every tool exception in ToolError("Error executing tool ...");
+    when the inner cause is a pydantic ValidationError we emit a fixed 7-key
+    payload (error/errcode/tool/missing/required/supplied/message) as
+    isError=True content. Non-ValidationError ToolErrors are re-raised so the
+    existing lowlevel error path is unchanged."""
+
+    async def call_tool(self, name, arguments, *args, **kwargs):
+        try:
+            return await super().call_tool(name, arguments, *args, **kwargs)
+        except ToolError as e:
+            cause = getattr(e, "__cause__", None)
+            if not isinstance(cause, ValidationError):
+                raise
+            tool = self._tool_manager.get_tool(name)
+            if tool is None:
+                raise
+            required = [
+                (fi.alias or fname)
+                for fname, fi in tool.fn_metadata.arg_model.model_fields.items()
+                if fi.is_required()
+            ]
+            supplied = list((arguments or {}).keys())
+            errs = cause.errors()
+            missing = [
+                str(err["loc"][0])
+                for err in errs
+                if err.get("type") == "missing" and err.get("loc")
+            ]
+            if missing:
+                errcode = "missing_required_arg"
+                message = (
+                    f"{name}: missing required argument {missing[0]!r}. "
+                    f"Required args: {', '.join(required)}."
+                )
+            else:
+                errcode = "arg_validation_failed"
+                first = errs[0] if errs else {"msg": "invalid"}
+                message = f"{name}: argument validation failed — {first.get('msg', 'invalid')}."
+            payload = {
+                "error": True,
+                "errcode": errcode,
+                "tool": name,
+                "missing": missing,
+                "required": required,
+                "supplied": supplied,
+                "message": message,
+            }
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=json.dumps(payload))],
+            )
+
+
+mcp = _StructuredArgErrorFastMCP("pddl-parser")
 
 # ---------------------------------------------------------------------------
 # Configuration (overridable via environment variables)

@@ -566,6 +566,63 @@ def run_test_body() -> int:
                 f"{backend}: requirements not in source order: {reqs}"
     test("inspect_domain: :requirements preserves source order", test_requirements_preserves_source_order)
 
+    # -----------------------------------------------------------------------
+    # FastMCP wrapper tests — exercise mcp.call_tool so pydantic ValidationError
+    # flows through Tool.run -> ToolError and our subclass converts it to a
+    # structured payload. Bare-function tests above bypass FastMCP.
+    # -----------------------------------------------------------------------
+    import asyncio
+    from parser_server import mcp
+    from mcp.types import CallToolResult
+
+    def _call(tool_name, arguments):
+        return asyncio.run(mcp.call_tool(tool_name, arguments))
+
+    def _assert_structured_arg_error(result, *, tool, expected_missing, expected_supplied):
+        assert isinstance(result, CallToolResult), f"expected CallToolResult, got {type(result).__name__}"
+        assert result.isError is True, f"expected isError=True, got {result.isError}"
+        text = result.content[0].text
+        payload = json.loads(text)
+        assert payload.get("error") is True, payload
+        assert payload.get("errcode") == "missing_required_arg", payload
+        assert payload.get("tool") == tool, payload
+        for m in expected_missing:
+            assert m in payload["missing"], f"{m!r} not in missing: {payload['missing']}"
+            assert m in payload["required"], f"{m!r} not in required: {payload['required']}"
+        for s in expected_supplied:
+            assert s in payload["supplied"], f"{s!r} not in supplied: {payload['supplied']}"
+        assert isinstance(payload.get("message"), str) and payload["message"], payload
+
+    def test_wrapper_inspect_domain_missing_domain():
+        result = _call("inspect_domain", {})
+        _assert_structured_arg_error(
+            result,
+            tool="inspect_domain",
+            expected_missing=["domain"],
+            expected_supplied=[],
+        )
+    test("wrapper: inspect_domain missing domain → structured payload", test_wrapper_inspect_domain_missing_domain)
+
+    def test_wrapper_get_trajectory_missing_problem_and_plan():
+        result = _call("get_trajectory", {"domain": DOMAIN})
+        _assert_structured_arg_error(
+            result,
+            tool="get_trajectory",
+            expected_missing=["problem", "plan"],
+            expected_supplied=["domain"],
+        )
+    test("wrapper: get_trajectory missing problem+plan → structured payload", test_wrapper_get_trajectory_missing_problem_and_plan)
+
+    def test_wrapper_diff_states_missing_state_after():
+        result = _call("diff_states", {"state_before": '["(clear a)"]'})
+        _assert_structured_arg_error(
+            result,
+            tool="diff_states",
+            expected_missing=["state_after"],
+            expected_supplied=["state_before"],
+        )
+    test("wrapper: diff_states missing state_after → structured payload", test_wrapper_diff_states_missing_state_after)
+
     print(f"\n{passed + failed + skipped} tests: {passed} passed, {failed} failed, {skipped} skipped")
     if failed:
         print(f"\n{RED}{failed} test(s) failed.{NC}")
