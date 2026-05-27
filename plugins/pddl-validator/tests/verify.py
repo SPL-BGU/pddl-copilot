@@ -290,6 +290,150 @@ def run_test_body() -> int:
         assert len(result["steps"]) == 2
     test("get_state_transition (plan as list[str])", test_state_transition_plan_as_list)
 
+    # -----------------------------------------------------------------------
+    # FastMCP wrapper tests — exercise mcp.call_tool, not the bare functions,
+    # so we catch pydantic ValidationError flowing through Tool.run -> ToolError.
+    # The bare-function tests above bypass FastMCP entirely.
+    # -----------------------------------------------------------------------
+    import asyncio
+    import json as _json
+    from validator_server import mcp
+    from mcp.types import CallToolResult
+
+    def _call(tool_name, arguments):
+        return asyncio.run(mcp.call_tool(tool_name, arguments))
+
+    def _assert_structured_arg_error(result, *, tool, expected_missing, expected_supplied):
+        assert isinstance(result, CallToolResult), f"expected CallToolResult, got {type(result).__name__}"
+        assert result.isError is True, f"expected isError=True, got {result.isError}"
+        text = result.content[0].text
+        payload = _json.loads(text)
+        assert payload.get("error") is True, payload
+        assert payload.get("errcode") == "missing_required_arg", payload
+        assert payload.get("tool") == tool, payload
+        for m in expected_missing:
+            assert m in payload["missing"], f"{m!r} not in missing: {payload['missing']}"
+        for s in expected_supplied:
+            assert s in payload["supplied"], f"{s!r} not in supplied: {payload['supplied']}"
+        # required is a stable contract — ensure expected missing are listed
+        for m in expected_missing:
+            assert m in payload["required"], f"{m!r} not in required: {payload['required']}"
+        assert isinstance(payload.get("message"), str) and payload["message"], payload
+
+    def test_wrapper_validate_plan_missing_problem_and_plan():
+        result = _call("validate_plan", {"domain": DOMAIN, "verbose": False})
+        _assert_structured_arg_error(
+            result,
+            tool="validate_plan",
+            expected_missing=["problem", "plan"],
+            expected_supplied=["domain", "verbose"],
+        )
+    test("wrapper: validate_plan missing problem+plan → structured payload", test_wrapper_validate_plan_missing_problem_and_plan)
+
+    def test_wrapper_validate_problem_missing_problem():
+        result = _call("validate_problem", {"domain": DOMAIN, "verbose": False})
+        _assert_structured_arg_error(
+            result,
+            tool="validate_problem",
+            expected_missing=["problem"],
+            expected_supplied=["domain", "verbose"],
+        )
+    test("wrapper: validate_problem missing problem → structured payload", test_wrapper_validate_problem_missing_problem)
+
+    def test_wrapper_get_state_transition_missing_problem_plan():
+        result = _call("get_state_transition", {"domain": DOMAIN, "verbose": False})
+        _assert_structured_arg_error(
+            result,
+            tool="get_state_transition",
+            expected_missing=["problem", "plan"],
+            expected_supplied=["domain", "verbose"],
+        )
+    test("wrapper: get_state_transition missing problem+plan → structured payload", test_wrapper_get_state_transition_missing_problem_plan)
+
+    def test_wrapper_validate_domain_missing_domain():
+        result = _call("validate_domain", {"verbose": False})
+        _assert_structured_arg_error(
+            result,
+            tool="validate_domain",
+            expected_missing=["domain"],
+            expected_supplied=["verbose"],
+        )
+    test("wrapper: validate_domain missing domain → structured payload", test_wrapper_validate_domain_missing_domain)
+
+    def test_wrapper_success_path_unchanged():
+        # Sanity: when args are present and valid, wrapper does not intercept —
+        # the JSON-serialized success dict reaches the model.
+        result = _call("validate_domain", {"domain": DOMAIN, "verbose": False})
+        # Success path returns Sequence[ContentBlock] (not CallToolResult) — the
+        # lowlevel server normalizes it. Either shape is acceptable as long as
+        # the result is not flagged as an error.
+        if isinstance(result, CallToolResult):
+            assert result.isError is not True, result
+    test("wrapper: success path is not intercepted", test_wrapper_success_path_unchanged)
+
+    # -----------------------------------------------------------------------
+    # Fix #2: _ensure_plan_file robustness against common LLM serialization shapes.
+    # -----------------------------------------------------------------------
+    def test_plan_as_list_literal_string():
+        # "['(pick-up a)', '(stack a b)']" — Python-list-literal string
+        result = validate_plan(DOMAIN, PROBLEM, plan="['(pick-up a)', '(stack a b)']", verbose=False)
+        assert "error" not in result, f"list-literal string rejected: {result}"
+        assert result["valid"] is True, f"Expected valid plan, got: {result}"
+    test("validate_plan (plan as list-literal string)", test_plan_as_list_literal_string)
+
+    def test_plan_as_newline_separated_parens():
+        result = validate_plan(DOMAIN, PROBLEM, plan="(pick-up a)\n(stack a b)", verbose=False)
+        assert "error" not in result, f"newline-separated rejected: {result}"
+        assert result["valid"] is True, f"Expected valid plan, got: {result}"
+    test("validate_plan (plan as newline-separated parens)", test_plan_as_newline_separated_parens)
+
+    def test_plan_as_bare_label_clear_error():
+        # Single-token bare label (e.g. problem name) is not a usable input —
+        # the error message should suggest valid input shapes rather than the
+        # generic "PDDL file not found".
+        result = validate_plan(DOMAIN, PROBLEM, plan="BW-rand-3", verbose=False)
+        assert result.get("error") is True, f"expected error dict, got {result}"
+        msg = result["message"].lower()
+        assert "bw-rand-3" in msg, msg
+        # The new message includes hints — but at minimum it must NOT be a
+        # generic "file not found" without context.
+        assert "list" in msg or "path" in msg or "label" in msg or "shape" in msg, msg
+    test("validate_plan (plan as bare label → clear error)", test_plan_as_bare_label_clear_error)
+
+    # -----------------------------------------------------------------------
+    # Fix #4: unknown-fluent precondition lookups return structured PRECONDITION_ERROR
+    # rather than bubbling up as a server error.
+    # -----------------------------------------------------------------------
+    UNKNOWN_FLUENT_DOMAIN = """(define (domain coin)
+      (:requirements :numeric-fluents)
+      (:predicates (have))
+      (:functions (purse))
+      (:action buy
+        :parameters ()
+        :precondition (and (not (have)) (>= (purse) 5))
+        :effect (have)))"""
+
+    # Problem deliberately omits (= (purse) X) so the precondition lookup fails
+    # — this is the same shape as farmland/zenotravel-numeric b-plans in sweep-5.
+    UNKNOWN_FLUENT_PROBLEM = """(define (problem buy-coin) (:domain coin)
+      (:init)
+      (:goal (have)))"""
+
+    UNKNOWN_FLUENT_PLAN = """(buy)"""
+
+    def test_unknown_fluent_structured_precondition_error():
+        result = validate_plan(UNKNOWN_FLUENT_DOMAIN, UNKNOWN_FLUENT_PROBLEM, UNKNOWN_FLUENT_PLAN, verbose=False)
+        # New behavior: structured PRECONDITION_ERROR verdict, not a server error.
+        # If pyvalidator changes and returns INVALID natively, that's also acceptable
+        # (still a verdict, still not an error).
+        if result.get("error") is True:
+            raise AssertionError(
+                f"expected structured verdict, got server error: {result['message']!r}"
+            )
+        assert result["valid"] is False, result
+        assert result.get("status") in ("PRECONDITION_ERROR", "INVALID"), result
+    test("validate_plan (unknown fluent → structured precondition error)", test_unknown_fluent_structured_precondition_error)
+
     print(f"\n{passed + failed} tests: {passed} passed, {failed} failed")
     if failed:
         print(f"\n{RED}Tests failed.{NC}")
