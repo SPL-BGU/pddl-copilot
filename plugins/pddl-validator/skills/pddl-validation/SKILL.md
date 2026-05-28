@@ -23,7 +23,7 @@ Do NOT tell the user the PDDL is correct based on your own analysis alone.
 - `validate_domain(domain, verbose?)` — Validates a PDDL domain's syntax, types, and structural consistency (calls pyvalidator's `validate_syntax(domain, None)`). NOT a lexical-only check — covers type-hierarchy soundness, predicate arity, and section nesting. Default `verbose=True` returns `{"valid": bool, "status": str, "report": str, "details": dict}`. With `verbose=False`, drops `details` only.
 - `validate_problem(domain, problem, verbose?)` — Validates that a PDDL problem is consistent with its domain (objects, predicates, types resolve). Does NOT validate a plan. Same return shape as `validate_domain`.
 - `validate_plan(domain, problem, plan, verbose?)` — Executes a plan against the (domain, problem) and reports whether it reaches the goal. The `valid` field reflects **plan correctness** (preconditions held + goal satisfied), not just syntax. Empty plan `[]` is valid input — represents the empty plan, correct when init already satisfies goal. Same return shape as `validate_domain` plus details on per-step failures.
-- `get_state_transition(domain, problem, plan, verbose?)` — Simulates plan execution step-by-step. Use to debug or inspect intermediate states. For a PASS/FAIL verdict, use `validate_plan` instead — it's cheaper and returns a flat shape. Default `verbose=True` returns `{"valid": bool, "report": str, "steps": list, "trajectory": list, "details": dict}`. With `verbose=False`, drops **both** `report` and `details`.
+- `get_state_transition(domain, problem, plan, verbose?)` — Simulates plan execution step-by-step. Use to debug or inspect intermediate states. For a PASS/FAIL verdict, use `validate_plan` instead — it's cheaper and returns a flat shape. Default `verbose=True` returns `{"valid": bool, "status": str, "report": str, "steps": list, "trajectory": list, "details": dict}`. With `verbose=False`, drops **both** `report` and `details` (keeps `status`).
 
 ### These tools accept PDDL content strings OR file paths
 
@@ -37,11 +37,11 @@ For `plan`, you can additionally pass a `list[str]` of action lines.
 
 The three `validate_*` tools return:
 - `valid` — boolean. For `validate_domain`/`validate_problem`, reflects syntax/consistency. For `validate_plan`, reflects plan correctness.
-- `status` — one of `VALID`, `INVALID`, `SYNTAX_ERROR`, `STRUCTURE_ERROR`.
+- `status` — one of `VALID`, `INVALID`, `SYNTAX_ERROR`, `STRUCTURE_ERROR`, `PRECONDITION_ERROR`. `validate_plan` and `get_state_transition` return `PRECONDITION_ERROR` (as a structured verdict, not a server error) when a numeric plan references a fluent the problem never initialized.
 - `report` — human-readable text summary.
 - `details` (verbose=True only) — full structured validation result.
 
-`get_state_transition` returns `valid` + `steps[]` + `trajectory[]` (and `report` + `details` if verbose=True). Invalid steps include per-precondition failure diagnostics with current values and deficit amounts.
+`get_state_transition` returns `valid` + `status` + `steps[]` + `trajectory[]` (and `report` + `details` if verbose=True). A `SYNTAX_ERROR`/`STRUCTURE_ERROR`/`PRECONDITION_ERROR` `status` means the plan never simulated (empty `steps`/`trajectory`); a `VALID`/`INVALID` `status` means it executed. Invalid steps include per-precondition failure diagnostics with current values and deficit amounts.
 
 ### `verbose=False` (size-sensitive callers)
 

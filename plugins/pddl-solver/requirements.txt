@@ -1,5 +1,5 @@
-mcp
-pydantic
+mcp>=1.27,<2.0
+pydantic>=2.13,<3.0
 unified-planning
 up-fast-downward
 up-enhsp

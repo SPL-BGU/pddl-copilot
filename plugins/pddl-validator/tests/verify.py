@@ -184,15 +184,26 @@ def run_test_body() -> int:
 
     def test_state_transition_verbose_default_has_report_details():
         result = get_state_transition(DOMAIN, PROBLEM, VALID_PLAN)
-        assert set(result.keys()) == {"valid", "report", "steps", "trajectory", "details"}, f"Unexpected keys: {result.keys()}"
+        assert set(result.keys()) == {"valid", "status", "report", "steps", "trajectory", "details"}, f"Unexpected keys: {result.keys()}"
     test("get_state_transition (default verbose=True)", test_state_transition_verbose_default_has_report_details)
 
     def test_state_transition_verbose_false_slim():
         result = get_state_transition(DOMAIN, PROBLEM, VALID_PLAN, verbose=False)
-        assert set(result.keys()) == {"valid", "steps", "trajectory"}, f"Unexpected keys: {result.keys()}"
+        assert set(result.keys()) == {"valid", "status", "steps", "trajectory"}, f"Unexpected keys: {result.keys()}"
         assert len(result["trajectory"]) >= 1
         assert "boolean_fluents" in result["trajectory"][0]
     test("get_state_transition (verbose=False slim, uncapped)", test_state_transition_verbose_false_slim)
+
+    def test_state_transition_structure_error_surfaces_status():
+        # Undefined action: the plan never simulates, so steps/trajectory are empty.
+        # status must still distinguish this from an executed-but-failed plan.
+        result = get_state_transition(DOMAIN, PROBLEM, plan=["(bogus-action a b)"], verbose=False)
+        assert "error" not in result, result
+        assert result["valid"] is False
+        assert result["status"] == "STRUCTURE_ERROR", \
+            f"expected STRUCTURE_ERROR for undefined action, got {result.get('status')}"
+        assert result["steps"] == [] and result["trajectory"] == []
+    test("get_state_transition (structure error surfaces status)", test_state_transition_structure_error_surfaces_status)
 
     def test_numeric_validation():
         result = validate_plan(NUMERIC_DOMAIN, NUMERIC_PROBLEM, NUMERIC_PLAN)
@@ -233,8 +244,13 @@ def run_test_body() -> int:
     test("validate_plan (typed hierarchy, sibling rejected)", test_typed_hierarchy_sibling_rejected)
 
     def test_malformed_pddl():
-        result = validate_domain("(define (domain broken))")
-        assert "error" not in result or result.get("status") == "SYNTAX_ERROR"
+        # Unbalanced parens — genuinely malformed. "(define (domain broken))" is
+        # actually a VALID empty domain, so it never exercised the rejection path.
+        result = validate_domain("(define (domain broken)")
+        assert "error" not in result, result
+        assert result["valid"] is False, f"malformed domain accepted: {result}"
+        assert result["status"] == "SYNTAX_ERROR", \
+            f"expected SYNTAX_ERROR, got {result.get('status')}"
     test("validate_domain (malformed PDDL)", test_malformed_pddl)
 
     # Regression: pyvalidator's report formatter unconditionally appended
@@ -289,6 +305,202 @@ def run_test_body() -> int:
         assert result["valid"] is True
         assert len(result["steps"]) == 2
     test("get_state_transition (plan as list[str])", test_state_transition_plan_as_list)
+
+    # -----------------------------------------------------------------------
+    # FastMCP wrapper tests — exercise mcp.call_tool, not the bare functions,
+    # so we catch pydantic ValidationError flowing through Tool.run -> ToolError.
+    # The bare-function tests above bypass FastMCP entirely.
+    # -----------------------------------------------------------------------
+    import asyncio
+    import json as _json
+    from validator_server import mcp
+    from mcp.types import CallToolResult
+
+    def _call(tool_name, arguments):
+        return asyncio.run(mcp.call_tool(tool_name, arguments))
+
+    def _assert_structured_arg_error(result, *, tool, expected_missing, expected_supplied):
+        assert isinstance(result, CallToolResult), f"expected CallToolResult, got {type(result).__name__}"
+        assert result.isError is True, f"expected isError=True, got {result.isError}"
+        text = result.content[0].text
+        payload = _json.loads(text)
+        assert payload.get("error") is True, payload
+        assert payload.get("errcode") == "missing_required_arg", payload
+        assert payload.get("tool") == tool, payload
+        for m in expected_missing:
+            assert m in payload["missing"], f"{m!r} not in missing: {payload['missing']}"
+        for s in expected_supplied:
+            assert s in payload["supplied"], f"{s!r} not in supplied: {payload['supplied']}"
+        # required is a stable contract — ensure expected missing are listed
+        for m in expected_missing:
+            assert m in payload["required"], f"{m!r} not in required: {payload['required']}"
+        assert isinstance(payload.get("message"), str) and payload["message"], payload
+
+    def test_wrapper_validate_plan_missing_problem_and_plan():
+        result = _call("validate_plan", {"domain": DOMAIN, "verbose": False})
+        _assert_structured_arg_error(
+            result,
+            tool="validate_plan",
+            expected_missing=["problem", "plan"],
+            expected_supplied=["domain", "verbose"],
+        )
+    test("wrapper: validate_plan missing problem+plan → structured payload", test_wrapper_validate_plan_missing_problem_and_plan)
+
+    def test_wrapper_validate_problem_missing_problem():
+        result = _call("validate_problem", {"domain": DOMAIN, "verbose": False})
+        _assert_structured_arg_error(
+            result,
+            tool="validate_problem",
+            expected_missing=["problem"],
+            expected_supplied=["domain", "verbose"],
+        )
+    test("wrapper: validate_problem missing problem → structured payload", test_wrapper_validate_problem_missing_problem)
+
+    def test_wrapper_get_state_transition_missing_problem_plan():
+        result = _call("get_state_transition", {"domain": DOMAIN, "verbose": False})
+        _assert_structured_arg_error(
+            result,
+            tool="get_state_transition",
+            expected_missing=["problem", "plan"],
+            expected_supplied=["domain", "verbose"],
+        )
+    test("wrapper: get_state_transition missing problem+plan → structured payload", test_wrapper_get_state_transition_missing_problem_plan)
+
+    def test_wrapper_validate_domain_missing_domain():
+        result = _call("validate_domain", {"verbose": False})
+        _assert_structured_arg_error(
+            result,
+            tool="validate_domain",
+            expected_missing=["domain"],
+            expected_supplied=["verbose"],
+        )
+    test("wrapper: validate_domain missing domain → structured payload", test_wrapper_validate_domain_missing_domain)
+
+    def test_wrapper_success_path_unchanged():
+        # Sanity: when args are present and valid, wrapper does not intercept —
+        # the JSON-serialized success dict reaches the model.
+        result = _call("validate_domain", {"domain": DOMAIN, "verbose": False})
+        # Success path returns Sequence[ContentBlock] (not CallToolResult) — the
+        # lowlevel server normalizes it. Either shape is acceptable as long as
+        # the result is not flagged as an error.
+        if isinstance(result, CallToolResult):
+            assert result.isError is not True, result
+    test("wrapper: success path is not intercepted", test_wrapper_success_path_unchanged)
+
+    # -----------------------------------------------------------------------
+    # Fix #2: _ensure_plan_file robustness against common LLM serialization shapes.
+    # -----------------------------------------------------------------------
+    def test_plan_as_list_literal_string():
+        # "['(pick-up a)', '(stack a b)']" — Python-list-literal string
+        result = validate_plan(DOMAIN, PROBLEM, plan="['(pick-up a)', '(stack a b)']", verbose=False)
+        assert "error" not in result, f"list-literal string rejected: {result}"
+        assert result["valid"] is True, f"Expected valid plan, got: {result}"
+    test("validate_plan (plan as list-literal string)", test_plan_as_list_literal_string)
+
+    def test_plan_as_newline_separated_parens():
+        result = validate_plan(DOMAIN, PROBLEM, plan="(pick-up a)\n(stack a b)", verbose=False)
+        assert "error" not in result, f"newline-separated rejected: {result}"
+        assert result["valid"] is True, f"Expected valid plan, got: {result}"
+    test("validate_plan (plan as newline-separated parens)", test_plan_as_newline_separated_parens)
+
+    def test_plan_as_newline_separated_bare_actions_not_rejected_at_shape_gate():
+        # The docstring on _ensure_plan_file claims multi-line plan text is
+        # accepted "with or without surrounding parens". Without parens
+        # pyvalidator likely rejects with a parse error (its concern), but
+        # the plugin's shape gate must NOT short-circuit to a FileNotFoundError.
+        result = validate_plan(DOMAIN, PROBLEM, plan="pick-up a\nstack a b", verbose=False)
+        msg = result.get("message", "")
+        assert "does not look like" not in msg, \
+            f"multi-line bare-no-parens was rejected at the shape gate: {msg!r}"
+    test("validate_plan (multi-line bare actions reach pyvalidator)", test_plan_as_newline_separated_bare_actions_not_rejected_at_shape_gate)
+
+    def test_plan_as_bare_label_clear_error():
+        # Single-token bare label (e.g. problem name) is not a usable input —
+        # the error message should suggest valid input shapes rather than the
+        # generic "PDDL file not found".
+        result = validate_plan(DOMAIN, PROBLEM, plan="BW-rand-3", verbose=False)
+        assert result.get("error") is True, f"expected error dict, got {result}"
+        msg = result["message"].lower()
+        assert "bw-rand-3" in msg, msg
+        # The new message includes hints — but at minimum it must NOT be a
+        # generic "file not found" without context.
+        assert "list" in msg or "path" in msg or "label" in msg or "shape" in msg, msg
+    test("validate_plan (plan as bare label → clear error)", test_plan_as_bare_label_clear_error)
+
+    # -----------------------------------------------------------------------
+    # Fix #4: unknown-fluent precondition lookups return structured PRECONDITION_ERROR
+    # rather than bubbling up as a server error.
+    # -----------------------------------------------------------------------
+    UNKNOWN_FLUENT_DOMAIN = """(define (domain coin)
+      (:requirements :numeric-fluents)
+      (:predicates (have))
+      (:functions (purse))
+      (:action buy
+        :parameters ()
+        :precondition (and (not (have)) (>= (purse) 5))
+        :effect (have)))"""
+
+    # Problem deliberately omits (= (purse) X) so the precondition lookup fails
+    # — this is the same shape as farmland/zenotravel-numeric b-plans in sweep-5.
+    UNKNOWN_FLUENT_PROBLEM = """(define (problem buy-coin) (:domain coin)
+      (:init)
+      (:goal (have)))"""
+
+    UNKNOWN_FLUENT_PLAN = """(buy)"""
+
+    def test_unknown_fluent_structured_precondition_error():
+        result = validate_plan(UNKNOWN_FLUENT_DOMAIN, UNKNOWN_FLUENT_PROBLEM, UNKNOWN_FLUENT_PLAN, verbose=False)
+        if result.get("error") is True:
+            raise AssertionError(
+                f"expected structured verdict, got server error: {result['message']!r}"
+            )
+        assert result["valid"] is False, result
+        # Pin to PRECONDITION_ERROR specifically — if pyvalidator changes and starts
+        # returning a native INVALID, this test SHOULD fail loudly so we can delete
+        # the in-validator heuristic rather than leave dead code shipping.
+        assert result.get("status") == "PRECONDITION_ERROR", result
+    test("validate_plan (unknown fluent → structured precondition error)", test_unknown_fluent_structured_precondition_error)
+
+    def test_unknown_fluent_verbose_true_preserves_details_key():
+        # The PRECONDITION_ERROR branch must honor the docstring contract that
+        # verbose=True returns {valid, status, report, details} — without this,
+        # callers (e.g. pddl-fixing skill) hit KeyError on result["details"].
+        result = validate_plan(UNKNOWN_FLUENT_DOMAIN, UNKNOWN_FLUENT_PROBLEM, UNKNOWN_FLUENT_PLAN, verbose=True)
+        assert result.get("error") is not True, result
+        assert result["valid"] is False, result
+        assert result.get("status") == "PRECONDITION_ERROR", result
+        assert "details" in result, f"verbose=True must include 'details' key: {result.keys()}"
+    test("validate_plan (PRECONDITION_ERROR verbose=True keeps details)", test_unknown_fluent_verbose_true_preserves_details_key)
+
+    def test_get_state_transition_unknown_fluent_precondition_error():
+        # get_state_transition wraps the same PDDLValidator().validate call as
+        # validate_plan and was previously bubbling the unknown-fluent exception
+        # as a server error too. Fix #4 must apply symmetrically.
+        result = get_state_transition(UNKNOWN_FLUENT_DOMAIN, UNKNOWN_FLUENT_PROBLEM, UNKNOWN_FLUENT_PLAN, verbose=False)
+        if result.get("error") is True:
+            raise AssertionError(
+                f"expected structured verdict, got server error: {result['message']!r}"
+            )
+        assert result["valid"] is False, result
+        assert result.get("status") == "PRECONDITION_ERROR", result
+    test("get_state_transition (unknown fluent → structured precondition error)", test_get_state_transition_unknown_fluent_precondition_error)
+
+    def test_get_state_transition_unknown_fluent_verbose_true_keeps_details():
+        result = get_state_transition(UNKNOWN_FLUENT_DOMAIN, UNKNOWN_FLUENT_PROBLEM, UNKNOWN_FLUENT_PLAN, verbose=True)
+        assert result.get("error") is not True, result
+        assert result["valid"] is False, result
+        assert result.get("status") == "PRECONDITION_ERROR", result
+        assert "details" in result, f"verbose=True must include 'details' key: {result.keys()}"
+    test("get_state_transition (PRECONDITION_ERROR verbose=True keeps details)", test_get_state_transition_unknown_fluent_verbose_true_keeps_details)
+
+    def test_plan_as_list_literal_rejects_non_string_items():
+        # ast.literal_eval of "[1, 2, 3]" parses to a list — must NOT be silently
+        # written as "1\n2\n3" to the plan file (would crash pyvalidator deeper).
+        # Behavior: fall through to _ensure_file, which raises FileNotFoundError-as-
+        # error-dict with the clearer-shape message.
+        result = validate_plan(DOMAIN, PROBLEM, plan="[1, 2, 3]", verbose=False)
+        assert result.get("error") is True, f"non-string list elements should error, got: {result}"
+    test("validate_plan (plan as list-literal of non-strings → error)", test_plan_as_list_literal_rejects_non_string_items)
 
     print(f"\n{passed + failed} tests: {passed} passed, {failed} failed")
     if failed:

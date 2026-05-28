@@ -8,14 +8,83 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 from contextlib import contextmanager
 from typing import Annotated, Union
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
+from mcp.server.fastmcp.exceptions import ToolError
+from mcp.types import CallToolResult, TextContent
+from pydantic import Field, ValidationError
+import ast
+import json
 import os
 import shutil
 import uuid
 
 from pyval import PDDLValidator
 
-mcp = FastMCP("pddl-validator")
+
+# NOTE: this class is duplicated verbatim in pddl-solver and pddl-parser. The
+# marketplace plugin-isolation rule (.claude/rules/marketplace.md) forbids
+# cross-plugin imports; each plugin must be installable standalone. Don't try
+# to "DRY" this into a shared module — it would break isolation. Fix it in
+# all three places when changing the payload contract.
+class _StructuredArgErrorFastMCP(FastMCP):
+    """FastMCP subclass that converts pydantic arg-validation errors into a
+    one-line structured payload so small models can parse and recover.
+
+    FastMCP wraps every tool exception in ToolError("Error executing tool ...");
+    when the inner cause is a pydantic ValidationError we emit a fixed 7-key
+    payload (error/errcode/tool/missing/required/supplied/message) as
+    isError=True content. Non-ValidationError ToolErrors are re-raised so the
+    existing lowlevel error path is unchanged."""
+
+    async def call_tool(self, name, arguments, *args, **kwargs):
+        try:
+            return await super().call_tool(name, arguments, *args, **kwargs)
+        except ToolError as e:
+            cause = getattr(e, "__cause__", None)
+            if not isinstance(cause, ValidationError):
+                raise
+            tool = self._tool_manager.get_tool(name)
+            if tool is None:
+                raise
+            required = [
+                (fi.alias or fname)
+                for fname, fi in tool.fn_metadata.arg_model.model_fields.items()
+                if fi.is_required()
+            ]
+            supplied = list((arguments or {}).keys())
+            errs = cause.errors()
+            missing = [
+                str(err["loc"][0])
+                for err in errs
+                if err.get("type") == "missing" and err.get("loc")
+            ]
+            if missing:
+                errcode = "missing_required_arg"
+                message = (
+                    f"{name}: missing required argument {missing[0]!r}. "
+                    f"Required args: {', '.join(required)}."
+                )
+            else:
+                errcode = "arg_validation_failed"
+                first = errs[0] if errs else {"msg": "invalid", "loc": ("?",)}
+                bad_loc = first.get("loc") or ("?",)
+                bad_arg = str(bad_loc[0])
+                message = f"{name}: argument {bad_arg!r}: {first.get('msg', 'invalid')}."
+            payload = {
+                "error": True,
+                "errcode": errcode,
+                "tool": name,
+                "missing": missing,
+                "required": required,
+                "supplied": supplied,
+                "message": message,
+            }
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=json.dumps(payload))],
+            )
+
+
+mcp = _StructuredArgErrorFastMCP("pddl-validator")
 
 # ---------------------------------------------------------------------------
 # Configuration (overridable via environment variables)
@@ -60,20 +129,61 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
         return expanded
 
     raise FileNotFoundError(
-        f"PDDL file not found: '{stripped}'. "
-        f"Pass inline PDDL content or a valid file path."
+        f"PDDL argument {stripped!r} does not look like PDDL content or a file path. "
+        f"PDDL content must start with '(' (e.g. '(define (domain ...) ...)') or be "
+        f"a valid file path. A bare problem name or label is not a usable input."
     )
 
 
 def _ensure_plan_file(plan_input, name: str, req_dir: str) -> str:
     """Materialize a plan into a file, accepting list[str], str content, or path.
     A list is written verbatim (empty list → empty file, valid when init already
-    satisfies the goal)."""
+    satisfies the goal).
+
+    Robust to common LLM serialization shapes also handled here:
+    - Python-list-literal string ("['(pick-up a)', '(stack a b)']") → parsed and
+      written as a list.
+    - Multi-line action text (with or without surrounding parens, e.g. lines like
+      "(pick-up a)" or "pick-up a") → written verbatim; pyvalidator parses it.
+
+    Single-token bare labels (e.g. "BW-rand-3") still fall through to the
+    file-path resolver and ultimately to `_ensure_file`'s FileNotFoundError,
+    which now suggests valid input shapes.
+    """
     if isinstance(plan_input, list):
         path = os.path.join(req_dir, name)
         with open(path, "w") as f:
-            f.write("\n".join(plan_input))
+            f.write("\n".join(str(a) for a in plan_input))
         return path
+
+    if not isinstance(plan_input, str):
+        raise FileNotFoundError(
+            f"plan must be a list of action strings, a content string, or a file path; "
+            f"got {type(plan_input).__name__}."
+        )
+
+    stripped = plan_input.strip()
+
+    # Python-list-literal string: "['(pick-up a)', '(stack a b)']"
+    if stripped.startswith("[") and stripped.endswith("]"):
+        try:
+            parsed = ast.literal_eval(stripped)
+        except (SyntaxError, ValueError):
+            parsed = None
+        if isinstance(parsed, list) and all(isinstance(a, str) for a in parsed):
+            path = os.path.join(req_dir, name)
+            with open(path, "w") as f:
+                f.write("\n".join(parsed))
+            return path
+
+    # Multi-line plan text — write as content so pyvalidator can attempt parse.
+    # This catches both "(pick-up a)\n(stack a b)" and "pick-up a\nstack a b".
+    if "\n" in plan_input:
+        path = os.path.join(req_dir, name)
+        with open(path, "w") as f:
+            f.write(plan_input)
+        return path
+
     return _ensure_file(plan_input, name, req_dir)
 
 
@@ -89,6 +199,34 @@ def _syntax_result_to_dict(result, verbose: bool) -> dict:
     }
     if verbose:
         out["details"] = result.to_json()
+    return out
+
+
+def _precondition_error_or_none(e: Exception, verbose: bool) -> dict | None:
+    """Detect pyvalidator's unknown-fluent precondition-lookup exception and
+    re-shape it as a structured INVALID verdict.
+
+    pyvalidator raises (instead of returning a structured INVALID) when a plan
+    references a numeric fluent the problem didn't initialize — common on
+    farmland and zenotravel-numeric broken-plan fixtures. Substring match against
+    pyvalidator's English message is intentionally narrow; if the upstream
+    message changes (see pddl-pyvalidator), this returns None and the caller
+    falls back to its generic error envelope.
+
+    Returns the structured dict on a match, or None to let the caller decide.
+    The verbose=True shape adds a `details` key so the call-site preserves its
+    documented `{valid, status, report, details}` contract.
+    """
+    msg = str(e)
+    if "does not have a value" not in msg:
+        return None
+    out = {
+        "valid": False,
+        "status": "PRECONDITION_ERROR",
+        "report": msg,
+    }
+    if verbose:
+        out["details"] = {"unknown_fluent": True, "message": msg}
     return out
 
 
@@ -177,7 +315,9 @@ def validate_plan(
                         with get_state_transition, which drops BOTH at verbose=False.)
         Error:         {"error": True, "message": str}
 
-        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR"."""
+        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR",
+        or "PRECONDITION_ERROR" (numeric plan referenced an uninitialized fluent —
+        precondition is unsatisfied; valid is False)."""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -189,6 +329,9 @@ def validate_plan(
         try:
             result = PDDLValidator().validate(dp, pp, plp)
         except Exception as e:
+            precondition_result = _precondition_error_or_none(e, verbose)
+            if precondition_result is not None:
+                return precondition_result
             return {"error": True, "message": f"Validation error: {e}"}
 
         return _syntax_result_to_dict(result, verbose)
@@ -211,11 +354,20 @@ def get_state_transition(
     An empty plan (`[]`) simulates the empty plan (initial state = final state).
 
     Returns:
-        verbose=True:  {"valid": bool, "report": str, "steps": list, "trajectory": list, "details": dict}
-        verbose=False: {"valid": bool, "steps": list, "trajectory": list}
+        verbose=True:  {"valid": bool, "status": str, "report": str, "steps": list, "trajectory": list, "details": dict}
+        verbose=False: {"valid": bool, "status": str, "steps": list, "trajectory": list}
                        (drops BOTH "report" and "details". This is asymmetric with
                         validate_plan, where verbose=False keeps "report".)
-        Error:         {"error": True, "message": str}"""
+        Precondition:  {"valid": False, "status": "PRECONDITION_ERROR", "report": str, ...}
+                       (numeric plan referenced an uninitialized fluent — verbose=True
+                        adds a "details" key; steps/trajectory are not produced)
+        Error:         {"error": True, "message": str}
+
+        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR",
+        "PRECONDITION_ERROR". On a SYNTAX_ERROR (bad domain/problem), STRUCTURE_ERROR
+        (undefined action, wrong arity) or PRECONDITION_ERROR (uninitialized numeric
+        fluent) the plan never simulates, so "steps"/"trajectory" are empty — read
+        "status" to tell that apart from a plan that executed and failed."""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -228,6 +380,9 @@ def get_state_transition(
             validator = PDDLValidator()
             result = validator.validate(dp, pp, plp)
         except Exception as e:
+            precondition_result = _precondition_error_or_none(e, verbose)
+            if precondition_result is not None:
+                return precondition_result
             return {"error": True, "message": f"Validation error: {e}"}
 
         # Build step-by-step output
@@ -271,6 +426,7 @@ def get_state_transition(
 
         out = {
             "valid": result.is_valid,
+            "status": result.status,
             "steps": steps,
             "trajectory": trajectory,
         }

@@ -545,6 +545,27 @@ def run_test_body() -> int:
             f"truncated subset is not the lex-smallest prefix: {pp_t['applicable_actions']} vs {pp['applicable_actions'][:2]}"
     test("get_applicable_actions: cross-backend determinism", test_get_applicable_actions_cross_backend_identical)
 
+    # Cross-backend canonical action: both backends must emit the action field in
+    # canonical s-expression form "(name arg ...)" with the domain-resolved (lowercased)
+    # name AND argument names, regardless of the input casing or format. UP previously
+    # echoed the raw input verbatim; a partial fix canonicalized only the name, leaving
+    # mixed-case args ("(pick-up A)") divergent from pddl-plus ("(pick-up a)"). Mixed-case
+    # input is the load-bearing case here — lowercase input cannot catch arg divergence.
+    def test_get_trajectory_cross_backend_canonical_action():
+        if not UP_AVAILABLE:
+            return
+        mixed_case_plan = ["PICK-UP(A)", "Stack(A, b)"]
+        pp = get_trajectory(DOMAIN, PROBLEM, mixed_case_plan, parser="pddl-plus-parser")
+        up = get_trajectory(DOMAIN, PROBLEM, mixed_case_plan, parser="unified-planning")
+        assert "error" not in pp, pp
+        assert "error" not in up, up
+        pp_actions = [step["action"] for step in pp["trajectory"].values()]
+        up_actions = [step["action"] for step in up["trajectory"].values()]
+        assert pp_actions == ["(pick-up a)", "(stack a b)"], pp_actions
+        assert pp_actions == up_actions, \
+            f"backends disagree on action format:\n  pp: {pp_actions}\n  up: {up_actions}"
+    test("get_trajectory: cross-backend canonical action", test_get_trajectory_cross_backend_canonical_action)
+
     # Issue 3 from the code review: confirm pddl-plus-parser's
     # parsed_domain.requirements iteration preserves source order.
     # If this fails, switch backend_pddl_plus.inspect_domain to regex-extract
@@ -565,6 +586,104 @@ def run_test_body() -> int:
             assert reqs == [":strips", ":typing", ":negative-preconditions"], \
                 f"{backend}: requirements not in source order: {reqs}"
     test("inspect_domain: :requirements preserves source order", test_requirements_preserves_source_order)
+
+    # -----------------------------------------------------------------------
+    # FastMCP wrapper tests — exercise mcp.call_tool so pydantic ValidationError
+    # flows through Tool.run -> ToolError and our subclass converts it to a
+    # structured payload. Bare-function tests above bypass FastMCP.
+    # -----------------------------------------------------------------------
+    import asyncio
+    from parser_server import mcp
+    from mcp.types import CallToolResult
+
+    def _call(tool_name, arguments):
+        return asyncio.run(mcp.call_tool(tool_name, arguments))
+
+    def _assert_structured_arg_error(result, *, tool, expected_missing, expected_supplied):
+        assert isinstance(result, CallToolResult), f"expected CallToolResult, got {type(result).__name__}"
+        assert result.isError is True, f"expected isError=True, got {result.isError}"
+        text = result.content[0].text
+        payload = json.loads(text)
+        assert payload.get("error") is True, payload
+        assert payload.get("errcode") == "missing_required_arg", payload
+        assert payload.get("tool") == tool, payload
+        for m in expected_missing:
+            assert m in payload["missing"], f"{m!r} not in missing: {payload['missing']}"
+            assert m in payload["required"], f"{m!r} not in required: {payload['required']}"
+        for s in expected_supplied:
+            assert s in payload["supplied"], f"{s!r} not in supplied: {payload['supplied']}"
+        assert isinstance(payload.get("message"), str) and payload["message"], payload
+
+    def test_wrapper_inspect_domain_missing_domain():
+        result = _call("inspect_domain", {})
+        _assert_structured_arg_error(
+            result,
+            tool="inspect_domain",
+            expected_missing=["domain"],
+            expected_supplied=[],
+        )
+    test("wrapper: inspect_domain missing domain → structured payload", test_wrapper_inspect_domain_missing_domain)
+
+    def test_wrapper_get_trajectory_missing_problem_and_plan():
+        result = _call("get_trajectory", {"domain": DOMAIN})
+        _assert_structured_arg_error(
+            result,
+            tool="get_trajectory",
+            expected_missing=["problem", "plan"],
+            expected_supplied=["domain"],
+        )
+    test("wrapper: get_trajectory missing problem+plan → structured payload", test_wrapper_get_trajectory_missing_problem_and_plan)
+
+    def test_wrapper_diff_states_missing_state_after():
+        result = _call("diff_states", {"state_before": '["(clear a)"]'})
+        _assert_structured_arg_error(
+            result,
+            tool="diff_states",
+            expected_missing=["state_after"],
+            expected_supplied=["state_before"],
+        )
+    test("wrapper: diff_states missing state_after → structured payload", test_wrapper_diff_states_missing_state_after)
+
+    # -----------------------------------------------------------------------
+    # Fix #2 (parser-side): _ensure_plan_file robustness in get_trajectory.
+    # Mirror of the validator-side tests — the parser's get_trajectory must
+    # accept the same LLM serialization shapes the validator now accepts.
+    # -----------------------------------------------------------------------
+    def test_get_trajectory_plan_as_list_literal_string():
+        result = get_trajectory(DOMAIN, PROBLEM, plan="['(pick-up a)', '(stack a b)']")
+        assert "error" not in result, f"list-literal string rejected: {result}"
+        assert result["num_steps"] == 2, result
+    test("get_trajectory (plan as list-literal string)", test_get_trajectory_plan_as_list_literal_string)
+
+    def test_get_trajectory_plan_as_newline_separated_parens():
+        result = get_trajectory(DOMAIN, PROBLEM, plan="(pick-up a)\n(stack a b)")
+        assert "error" not in result, f"newline-separated rejected: {result}"
+        assert result["num_steps"] == 2, result
+    test("get_trajectory (plan as newline-separated parens)", test_get_trajectory_plan_as_newline_separated_parens)
+
+    def test_get_trajectory_plan_as_newline_separated_bare_actions_not_at_shape_gate():
+        # Mirror of the validator-side test — _ensure_plan_file's multi-line
+        # branch must accept bare-action multi-line input; the parser/pyparsing
+        # below it is free to reject the content with a parse error, but the
+        # plugin must NOT short-circuit at the shape gate.
+        result = get_trajectory(DOMAIN, PROBLEM, plan="pick-up a\nstack a b")
+        msg = result.get("message", "")
+        assert "does not look like" not in msg, \
+            f"multi-line bare-no-parens was rejected at the shape gate: {msg!r}"
+    test("get_trajectory (multi-line bare actions reach parser)", test_get_trajectory_plan_as_newline_separated_bare_actions_not_at_shape_gate)
+
+    def test_get_trajectory_plan_as_bare_label_clear_error():
+        result = get_trajectory(DOMAIN, PROBLEM, plan="BW-rand-3")
+        assert result.get("error") is True, f"expected error, got: {result}"
+        msg = result["message"].lower()
+        assert "bw-rand-3" in msg, msg
+        assert "list" in msg or "path" in msg or "label" in msg or "shape" in msg, msg
+    test("get_trajectory (plan as bare label → clear error)", test_get_trajectory_plan_as_bare_label_clear_error)
+
+    def test_get_trajectory_plan_as_list_literal_non_strings():
+        result = get_trajectory(DOMAIN, PROBLEM, plan="[1, 2, 3]")
+        assert result.get("error") is True, f"non-string list elements should error, got: {result}"
+    test("get_trajectory (plan as list-literal of non-strings → error)", test_get_trajectory_plan_as_list_literal_non_strings)
 
     print(f"\n{passed + failed + skipped} tests: {passed} passed, {failed} failed, {skipped} skipped")
     if failed:

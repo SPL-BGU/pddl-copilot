@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.7.0
+
+Sweep-5 tool-use error UX improvements. Motivated by ~17.6k silent failures observed when small models (Qwen3.5_0.8B, Qwen3.5_4B) called tools with missing or wrong-typed args and FastMCP's pydantic dump was unparseable; see the sweep-5 report in the experiments sibling repo for full numbers.
+
+- **Structured arg-error payload.** A `_StructuredArgErrorFastMCP` subclass intercepts pydantic `ValidationError` and emits a fixed 7-key payload (`error/errcode/tool/missing/required/supplied/message`) as `isError=True` content, instead of FastMCP's opaque `"Error executing tool ..."` string. `errcode` is one of `missing_required_arg` or `arg_validation_failed`; the latter now names the offending argument from pydantic's `loc[0]`.
+- **`get_trajectory._ensure_plan_file` accepts more LLM serialization shapes.** Python-list-literal strings (`"['(pick-up a)', '(stack a b)']"`) are parsed with `ast.literal_eval` when every element is a string; multi-line plan text (with or without surrounding parens) is written verbatim. Bare single-token labels still error, with a clearer message naming valid input shapes.
+- **`mcp` / `pydantic` are now version-pinned** in `requirements.txt` to `mcp>=1.27,<2.0` and `pydantic>=2.13,<3.0`. The wrapper above touches FastMCP's `_tool_manager` / `tool.fn_metadata.arg_model` (underscored / undocumented), so an MCP-SDK major bump could break it; the pin upper-bounds the upgrade boundary.
+- **Fix: `get_trajectory` canonical action output (`unified-planning` backend).** The action field is now emitted in canonical s-expression form with the domain-resolved (lowercased) name *and* argument names — e.g. `(pick-up a)` — instead of echoing the raw input string (`pick-up(a)`, or `(pick-up A)` for mixed-case args). Restores the documented "both backends produce identical canonical output" contract; UP is the default backend for non-numeric domains, so this affected the default trajectory output.
+
 ## 1.6.0
 
 - `get_trajectory` docstring adds a cross-reference distinguishing it from the validator's `get_state_transition`: this tool is for clean trajectory *extraction* on known-valid plans (dual-backend, leaner shape, no diagnostics); `get_state_transition` is for *debugging* with rich per-step precondition failures. Motivated by LLM tool-selection ambiguity between the two near-synonymous names.

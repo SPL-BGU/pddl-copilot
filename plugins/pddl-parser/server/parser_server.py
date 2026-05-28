@@ -11,7 +11,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Annotated, List, Literal, Optional, Union
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
+from mcp.server.fastmcp.exceptions import ToolError
+from mcp.types import CallToolResult, TextContent
+from pydantic import Field, ValidationError
+import ast
 import json
 import os
 import re
@@ -21,7 +24,72 @@ import uuid
 
 ParserName = Literal["pddl-plus-parser", "unified-planning"]
 
-mcp = FastMCP("pddl-parser")
+
+# NOTE: this class is duplicated verbatim in pddl-validator and pddl-solver.
+# The marketplace plugin-isolation rule (.claude/rules/marketplace.md) forbids
+# cross-plugin imports; each plugin must be installable standalone. Don't try
+# to "DRY" this into a shared module — it would break isolation. Fix it in
+# all three places when changing the payload contract.
+class _StructuredArgErrorFastMCP(FastMCP):
+    """FastMCP subclass that converts pydantic arg-validation errors into a
+    one-line structured payload so small models can parse and recover.
+
+    FastMCP wraps every tool exception in ToolError("Error executing tool ...");
+    when the inner cause is a pydantic ValidationError we emit a fixed 7-key
+    payload (error/errcode/tool/missing/required/supplied/message) as
+    isError=True content. Non-ValidationError ToolErrors are re-raised so the
+    existing lowlevel error path is unchanged."""
+
+    async def call_tool(self, name, arguments, *args, **kwargs):
+        try:
+            return await super().call_tool(name, arguments, *args, **kwargs)
+        except ToolError as e:
+            cause = getattr(e, "__cause__", None)
+            if not isinstance(cause, ValidationError):
+                raise
+            tool = self._tool_manager.get_tool(name)
+            if tool is None:
+                raise
+            required = [
+                (fi.alias or fname)
+                for fname, fi in tool.fn_metadata.arg_model.model_fields.items()
+                if fi.is_required()
+            ]
+            supplied = list((arguments or {}).keys())
+            errs = cause.errors()
+            missing = [
+                str(err["loc"][0])
+                for err in errs
+                if err.get("type") == "missing" and err.get("loc")
+            ]
+            if missing:
+                errcode = "missing_required_arg"
+                message = (
+                    f"{name}: missing required argument {missing[0]!r}. "
+                    f"Required args: {', '.join(required)}."
+                )
+            else:
+                errcode = "arg_validation_failed"
+                first = errs[0] if errs else {"msg": "invalid", "loc": ("?",)}
+                bad_loc = first.get("loc") or ("?",)
+                bad_arg = str(bad_loc[0])
+                message = f"{name}: argument {bad_arg!r}: {first.get('msg', 'invalid')}."
+            payload = {
+                "error": True,
+                "errcode": errcode,
+                "tool": name,
+                "missing": missing,
+                "required": required,
+                "supplied": supplied,
+                "message": message,
+            }
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=json.dumps(payload))],
+            )
+
+
+mcp = _StructuredArgErrorFastMCP("pddl-parser")
 
 # ---------------------------------------------------------------------------
 # Configuration (overridable via environment variables)
@@ -112,19 +180,57 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
         return os.path.abspath(stripped)
 
     raise FileNotFoundError(
-        f"PDDL file not found: '{stripped}'. "
-        f"Pass inline PDDL content (starting with '(') or a valid file path."
+        f"PDDL argument {stripped!r} does not look like PDDL content or a file path. "
+        f"PDDL content must start with '(' (e.g. '(define (domain ...) ...)') or be "
+        f"a valid file path. A bare problem name or label is not a usable input."
     )
 
 
 def _ensure_plan_file(plan_input, name: str, req_dir: str) -> str:
     """Materialize a plan into a file, accepting list[str], str content, or path.
-    An empty list produces an empty file (valid for goal-already-satisfied)."""
+    An empty list produces an empty file (valid for goal-already-satisfied).
+
+    Robust to common LLM serialization shapes also handled here:
+    - Python-list-literal string ("['(pick-up a)', '(stack a b)']") → parsed
+      with ast.literal_eval and written as a list when every element is a str.
+    - Multi-line action text → written verbatim; downstream parser handles it.
+
+    Single-token bare labels still fall through to `_ensure_file`'s
+    FileNotFoundError, which now suggests valid input shapes.
+    """
     if isinstance(plan_input, list):
         path = os.path.join(req_dir, name)
         with open(path, "w") as f:
-            f.write("\n".join(plan_input))
+            f.write("\n".join(str(a) for a in plan_input))
         return path
+
+    if not isinstance(plan_input, str):
+        raise FileNotFoundError(
+            f"plan must be a list of action strings, a content string, or a file path; "
+            f"got {type(plan_input).__name__}."
+        )
+
+    stripped = plan_input.strip()
+
+    # Python-list-literal string: "['(pick-up a)', '(stack a b)']"
+    if stripped.startswith("[") and stripped.endswith("]"):
+        try:
+            parsed = ast.literal_eval(stripped)
+        except (SyntaxError, ValueError):
+            parsed = None
+        if isinstance(parsed, list) and all(isinstance(a, str) for a in parsed):
+            path = os.path.join(req_dir, name)
+            with open(path, "w") as f:
+                f.write("\n".join(parsed))
+            return path
+
+    # Multi-line plan text — write as content so the parser can attempt parse.
+    if "\n" in plan_input:
+        path = os.path.join(req_dir, name)
+        with open(path, "w") as f:
+            f.write(plan_input)
+        return path
+
     return _ensure_file(plan_input, name, req_dir)
 
 

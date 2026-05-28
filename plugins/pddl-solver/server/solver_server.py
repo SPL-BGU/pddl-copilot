@@ -8,8 +8,11 @@ Accepts inline PDDL content strings (starting with '(') or file paths.
 from contextlib import contextmanager
 from typing import Annotated, Literal, Optional
 from mcp.server.fastmcp import FastMCP
-from pydantic import Field
+from mcp.server.fastmcp.exceptions import ToolError
+from mcp.types import CallToolResult, TextContent
+from pydantic import Field, ValidationError
 import glob
+import json
 import os
 import platform
 import re
@@ -21,6 +24,70 @@ import uuid
 from unified_planning.io import PDDLReader
 from unified_planning.shortcuts import OneshotPlanner, get_environment
 import unified_planning.engines.results as up_results
+
+
+# NOTE: this class is duplicated verbatim in pddl-validator and pddl-parser.
+# The marketplace plugin-isolation rule (.claude/rules/marketplace.md) forbids
+# cross-plugin imports; each plugin must be installable standalone. Don't try
+# to "DRY" this into a shared module — it would break isolation. Fix it in
+# all three places when changing the payload contract.
+class _StructuredArgErrorFastMCP(FastMCP):
+    """FastMCP subclass that converts pydantic arg-validation errors into a
+    one-line structured payload so small models can parse and recover.
+
+    FastMCP wraps every tool exception in ToolError("Error executing tool ...");
+    when the inner cause is a pydantic ValidationError we emit a fixed 7-key
+    payload (error/errcode/tool/missing/required/supplied/message) as
+    isError=True content. Non-ValidationError ToolErrors are re-raised so the
+    existing lowlevel error path is unchanged."""
+
+    async def call_tool(self, name, arguments, *args, **kwargs):
+        try:
+            return await super().call_tool(name, arguments, *args, **kwargs)
+        except ToolError as e:
+            cause = getattr(e, "__cause__", None)
+            if not isinstance(cause, ValidationError):
+                raise
+            tool = self._tool_manager.get_tool(name)
+            if tool is None:
+                raise
+            required = [
+                (fi.alias or fname)
+                for fname, fi in tool.fn_metadata.arg_model.model_fields.items()
+                if fi.is_required()
+            ]
+            supplied = list((arguments or {}).keys())
+            errs = cause.errors()
+            missing = [
+                str(err["loc"][0])
+                for err in errs
+                if err.get("type") == "missing" and err.get("loc")
+            ]
+            if missing:
+                errcode = "missing_required_arg"
+                message = (
+                    f"{name}: missing required argument {missing[0]!r}. "
+                    f"Required args: {', '.join(required)}."
+                )
+            else:
+                errcode = "arg_validation_failed"
+                first = errs[0] if errs else {"msg": "invalid", "loc": ("?",)}
+                bad_loc = first.get("loc") or ("?",)
+                bad_arg = str(bad_loc[0])
+                message = f"{name}: argument {bad_arg!r}: {first.get('msg', 'invalid')}."
+            payload = {
+                "error": True,
+                "errcode": errcode,
+                "tool": name,
+                "missing": missing,
+                "required": required,
+                "supplied": supplied,
+                "message": message,
+            }
+            return CallToolResult(
+                isError=True,
+                content=[TextContent(type="text", text=json.dumps(payload))],
+            )
 
 
 MIN_JAVA_MAJOR = 17
@@ -147,7 +214,7 @@ if _java_home:
 # sys.stdout, which corrupts the MCP stdio JSONRPC channel on the client.
 get_environment().credits_stream = None
 
-mcp = FastMCP("pddl-solver")
+mcp = _StructuredArgErrorFastMCP("pddl-solver")
 
 # ---------------------------------------------------------------------------
 # Configuration (overridable via environment variables)
@@ -231,8 +298,9 @@ def _ensure_file(content_or_path: str, name: str, req_dir: str) -> str:
         return expanded
 
     raise FileNotFoundError(
-        f"PDDL file not found: '{stripped}'. "
-        f"Pass inline PDDL content or a valid file path."
+        f"PDDL argument {stripped!r} does not look like PDDL content or a file path. "
+        f"PDDL content must start with '(' (e.g. '(define (domain ...) ...)') or be "
+        f"a valid file path. A bare problem name or label is not a usable input."
     )
 
 
@@ -315,6 +383,12 @@ def _solve(engine_name: str, domain: str, problem: str,
                 "the plugin — it auto-discovers keg-only Homebrew installs "
                 "with no manual JAVA_HOME needed."
             )
+        elif trimmed_log:
+            # Bound the tail by MAX_FAILURE_LOG_CHARS so the env-var lever
+            # (used by small-context callers like Ollama) cannot be exceeded.
+            # The full trimmed_log is still returned in the `log` field.
+            tail = trimmed_log[-min(400, MAX_FAILURE_LOG_CHARS):]
+            message = f"Planner failed with status {status}. log_tail: {tail!r}"
         else:
             message = f"Planner failed with status {status}"
         return {
@@ -411,6 +485,7 @@ def numeric_planner(
 
 @mcp.tool(annotations={"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False})
 def save_plan(
+    # Strict list[str] by design (not Union[str, list[str]] like validate_plan): save_plan only writes, so a wrong shape should surface a structured arg error via the FastMCP wrapper, not be silently coerced.
     plan: Annotated[list[str], Field(description="List of action strings to save.")],
     domain: Annotated[Optional[str], Field(description="Domain path or content (used to derive filename and metadata).")] = None,
     problem: Annotated[Optional[str], Field(description="Problem path or content (used to derive filename and metadata).")] = None,
