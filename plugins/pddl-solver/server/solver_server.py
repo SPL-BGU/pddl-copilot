@@ -485,6 +485,7 @@ def numeric_planner(
 
 @mcp.tool(annotations={"readOnlyHint": False, "idempotentHint": False, "openWorldHint": False})
 def save_plan(
+    # Strict list[str] by design (not Union[str, list[str]] like validate_plan): save_plan only writes, so a wrong shape should surface a structured arg error via the FastMCP wrapper, not be silently coerced.
     plan: Annotated[list[str], Field(description="List of action strings to save.")],
     domain: Annotated[Optional[str], Field(description="Domain path or content (used to derive filename and metadata).")] = None,
     problem: Annotated[Optional[str], Field(description="Problem path or content (used to derive filename and metadata).")] = None,
