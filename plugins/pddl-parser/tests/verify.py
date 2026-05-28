@@ -545,6 +545,26 @@ def run_test_body() -> int:
             f"truncated subset is not the lex-smallest prefix: {pp_t['applicable_actions']} vs {pp['applicable_actions'][:2]}"
     test("get_applicable_actions: cross-backend determinism", test_get_applicable_actions_cross_backend_identical)
 
+    # Cross-backend canonical action: both backends must emit the action field in
+    # canonical s-expression form "(name arg ...)", regardless of the input format.
+    # UP previously echoed the raw input verbatim, so "pick-up(a)" came back as
+    # "pick-up(a)" from UP but "(pick-up a)" from pddl-plus — breaking the
+    # "both backends produce identical canonical output" contract under auto-fallback.
+    def test_get_trajectory_cross_backend_canonical_action():
+        if not UP_AVAILABLE:
+            return
+        functional_plan = ["pick-up(a)", "stack(a, b)"]
+        pp = get_trajectory(DOMAIN, PROBLEM, functional_plan, parser="pddl-plus-parser")
+        up = get_trajectory(DOMAIN, PROBLEM, functional_plan, parser="unified-planning")
+        assert "error" not in pp, pp
+        assert "error" not in up, up
+        pp_actions = [step["action"] for step in pp["trajectory"].values()]
+        up_actions = [step["action"] for step in up["trajectory"].values()]
+        assert pp_actions == ["(pick-up a)", "(stack a b)"], pp_actions
+        assert pp_actions == up_actions, \
+            f"backends disagree on action format:\n  pp: {pp_actions}\n  up: {up_actions}"
+    test("get_trajectory: cross-backend canonical action", test_get_trajectory_cross_backend_canonical_action)
+
     # Issue 3 from the code review: confirm pddl-plus-parser's
     # parsed_domain.requirements iteration preserves source order.
     # If this fails, switch backend_pddl_plus.inspect_domain to regex-extract

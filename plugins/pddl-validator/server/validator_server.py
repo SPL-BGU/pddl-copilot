@@ -354,14 +354,20 @@ def get_state_transition(
     An empty plan (`[]`) simulates the empty plan (initial state = final state).
 
     Returns:
-        verbose=True:  {"valid": bool, "report": str, "steps": list, "trajectory": list, "details": dict}
-        verbose=False: {"valid": bool, "steps": list, "trajectory": list}
+        verbose=True:  {"valid": bool, "status": str, "report": str, "steps": list, "trajectory": list, "details": dict}
+        verbose=False: {"valid": bool, "status": str, "steps": list, "trajectory": list}
                        (drops BOTH "report" and "details". This is asymmetric with
                         validate_plan, where verbose=False keeps "report".)
         Precondition:  {"valid": False, "status": "PRECONDITION_ERROR", "report": str, ...}
                        (numeric plan referenced an uninitialized fluent — verbose=True
                         adds a "details" key; steps/trajectory are not produced)
-        Error:         {"error": True, "message": str}"""
+        Error:         {"error": True, "message": str}
+
+        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR",
+        "PRECONDITION_ERROR". On a SYNTAX_ERROR (bad domain/problem), STRUCTURE_ERROR
+        (undefined action, wrong arity) or PRECONDITION_ERROR (uninitialized numeric
+        fluent) the plan never simulates, so "steps"/"trajectory" are empty — read
+        "status" to tell that apart from a plan that executed and failed."""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -420,6 +426,7 @@ def get_state_transition(
 
         out = {
             "valid": result.is_valid,
+            "status": result.status,
             "steps": steps,
             "trajectory": trajectory,
         }

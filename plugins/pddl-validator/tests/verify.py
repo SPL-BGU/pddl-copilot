@@ -184,15 +184,26 @@ def run_test_body() -> int:
 
     def test_state_transition_verbose_default_has_report_details():
         result = get_state_transition(DOMAIN, PROBLEM, VALID_PLAN)
-        assert set(result.keys()) == {"valid", "report", "steps", "trajectory", "details"}, f"Unexpected keys: {result.keys()}"
+        assert set(result.keys()) == {"valid", "status", "report", "steps", "trajectory", "details"}, f"Unexpected keys: {result.keys()}"
     test("get_state_transition (default verbose=True)", test_state_transition_verbose_default_has_report_details)
 
     def test_state_transition_verbose_false_slim():
         result = get_state_transition(DOMAIN, PROBLEM, VALID_PLAN, verbose=False)
-        assert set(result.keys()) == {"valid", "steps", "trajectory"}, f"Unexpected keys: {result.keys()}"
+        assert set(result.keys()) == {"valid", "status", "steps", "trajectory"}, f"Unexpected keys: {result.keys()}"
         assert len(result["trajectory"]) >= 1
         assert "boolean_fluents" in result["trajectory"][0]
     test("get_state_transition (verbose=False slim, uncapped)", test_state_transition_verbose_false_slim)
+
+    def test_state_transition_structure_error_surfaces_status():
+        # Undefined action: the plan never simulates, so steps/trajectory are empty.
+        # status must still distinguish this from an executed-but-failed plan.
+        result = get_state_transition(DOMAIN, PROBLEM, plan=["(bogus-action a b)"], verbose=False)
+        assert "error" not in result, result
+        assert result["valid"] is False
+        assert result["status"] == "STRUCTURE_ERROR", \
+            f"expected STRUCTURE_ERROR for undefined action, got {result.get('status')}"
+        assert result["steps"] == [] and result["trajectory"] == []
+    test("get_state_transition (structure error surfaces status)", test_state_transition_structure_error_surfaces_status)
 
     def test_numeric_validation():
         result = validate_plan(NUMERIC_DOMAIN, NUMERIC_PROBLEM, NUMERIC_PLAN)
@@ -233,8 +244,13 @@ def run_test_body() -> int:
     test("validate_plan (typed hierarchy, sibling rejected)", test_typed_hierarchy_sibling_rejected)
 
     def test_malformed_pddl():
-        result = validate_domain("(define (domain broken))")
-        assert "error" not in result or result.get("status") == "SYNTAX_ERROR"
+        # Unbalanced parens — genuinely malformed. "(define (domain broken))" is
+        # actually a VALID empty domain, so it never exercised the rejection path.
+        result = validate_domain("(define (domain broken)")
+        assert "error" not in result, result
+        assert result["valid"] is False, f"malformed domain accepted: {result}"
+        assert result["status"] == "SYNTAX_ERROR", \
+            f"expected SYNTAX_ERROR, got {result.get('status')}"
     test("validate_domain (malformed PDDL)", test_malformed_pddl)
 
     # Regression: pyvalidator's report formatter unconditionally appended
