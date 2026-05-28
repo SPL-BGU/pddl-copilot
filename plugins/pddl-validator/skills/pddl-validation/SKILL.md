@@ -37,11 +37,11 @@ For `plan`, you can additionally pass a `list[str]` of action lines.
 
 The three `validate_*` tools return:
 - `valid` — boolean. For `validate_domain`/`validate_problem`, reflects syntax/consistency. For `validate_plan`, reflects plan correctness.
-- `status` — one of `VALID`, `INVALID`, `SYNTAX_ERROR`, `STRUCTURE_ERROR`.
+- `status` — one of `VALID`, `INVALID`, `SYNTAX_ERROR`, `STRUCTURE_ERROR`, `PRECONDITION_ERROR`. `validate_plan` and `get_state_transition` return `PRECONDITION_ERROR` (as a structured verdict, not a server error) when a numeric plan references a fluent the problem never initialized.
 - `report` — human-readable text summary.
 - `details` (verbose=True only) — full structured validation result.
 
-`get_state_transition` returns `valid` + `status` + `steps[]` + `trajectory[]` (and `report` + `details` if verbose=True). A `SYNTAX_ERROR`/`STRUCTURE_ERROR` `status` means the plan never simulated (empty `steps`/`trajectory`); a `VALID`/`INVALID` `status` means it executed. Invalid steps include per-precondition failure diagnostics with current values and deficit amounts.
+`get_state_transition` returns `valid` + `status` + `steps[]` + `trajectory[]` (and `report` + `details` if verbose=True). A `SYNTAX_ERROR`/`STRUCTURE_ERROR`/`PRECONDITION_ERROR` `status` means the plan never simulated (empty `steps`/`trajectory`); a `VALID`/`INVALID` `status` means it executed. Invalid steps include per-precondition failure diagnostics with current values and deficit amounts.
 
 ### `verbose=False` (size-sensitive callers)
 

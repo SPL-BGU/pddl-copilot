@@ -230,6 +230,34 @@ def run_test_body() -> int:
         assert "numeric" in step.get("changes", {}), f"Expected numeric changes: {step}"
     test("get_state_transition (numeric)", test_state_transition_numeric)
 
+    # A plan that reads a numeric fluent the problem never initialized makes
+    # pyvalidator raise; both tools must re-shape that as a structured
+    # PRECONDITION_ERROR verdict rather than bubbling up an {"error": True} server error.
+    UNINIT_FLUENT_DOMAIN = """(define (domain fuel) (:requirements :strips :typing :fluents)
+ (:types truck) (:functions (fuel ?t - truck))
+ (:action drive :parameters (?t - truck)
+   :precondition (>= (fuel ?t) 1) :effect (decrease (fuel ?t) 1)))"""
+    UNINIT_FLUENT_PROBLEM = """(define (problem p) (:domain fuel) (:objects t1 - truck)
+ (:init) (:goal (<= (fuel t1) 0)))"""
+    UNINIT_FLUENT_PLAN = ["(drive t1)"]
+
+    def test_validate_plan_uninitialized_fluent_precondition_error():
+        result = validate_plan(UNINIT_FLUENT_DOMAIN, UNINIT_FLUENT_PROBLEM, UNINIT_FLUENT_PLAN, verbose=False)
+        assert "error" not in result, f"unexpected server error: {result}"
+        assert result["valid"] is False
+        assert result["status"] == "PRECONDITION_ERROR", \
+            f"expected PRECONDITION_ERROR, got {result.get('status')}"
+    test("validate_plan (uninitialized fluent -> PRECONDITION_ERROR)", test_validate_plan_uninitialized_fluent_precondition_error)
+
+    def test_state_transition_uninitialized_fluent_precondition_error():
+        result = get_state_transition(UNINIT_FLUENT_DOMAIN, UNINIT_FLUENT_PROBLEM, UNINIT_FLUENT_PLAN, verbose=True)
+        assert "error" not in result, f"unexpected server error: {result}"
+        assert result["valid"] is False
+        assert result["status"] == "PRECONDITION_ERROR", \
+            f"expected PRECONDITION_ERROR, got {result.get('status')}"
+        assert result["details"]["unknown_fluent"] is True
+    test("get_state_transition (uninitialized fluent -> PRECONDITION_ERROR)", test_state_transition_uninitialized_fluent_precondition_error)
+
     def test_typed_hierarchy_subtype_accepted():
         result = validate_plan(TYPED_DOMAIN, TYPED_PROBLEM, TYPED_SUBTYPE_PLAN)
         assert "error" not in result, f"Error: {result.get('message', result)}"

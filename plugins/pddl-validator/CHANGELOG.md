@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.0.1
+
+- **Fix:** `get_state_transition` now always includes `status` in its output (matching the `validate_*` family). Previously a `STRUCTURE_ERROR`/`SYNTAX_ERROR` (undefined action, wrong arity, malformed PDDL) returned `{"valid": false, "steps": [], "trajectory": []}` — indistinguishable from a plan that executed and failed. Callers can now read `status` to tell "never simulated" apart from "ran and failed".
+- **Fix:** `validate_plan` and `get_state_transition` no longer surface a generic `{"error": true}` server error when a numeric plan references a fluent the problem never initialized (common on farmland / zenotravel-numeric). pyvalidator's "does not have a value" exception is re-shaped into a structured `{"valid": false, "status": "PRECONDITION_ERROR", ...}` verdict. New status value: `PRECONDITION_ERROR`.
+
 ## 3.0.0 — BREAKING
 
 **Tool surface change.** `validate_pddl_syntax` is split into three task-aligned tools to eliminate the argument-shape polymorphism that was the dominant cause of plan-validation failures in downstream LLM consumers (a `(domain, problem)` call returns the consistency verdict, *not* the plan verdict — the previous name "validate_pddl_syntax" did not advertise that gotcha).

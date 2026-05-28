@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.6.1
+
+- **Fix:** the `unified-planning` backend now emits the `get_trajectory` `action` field in canonical s-expression form with the domain-resolved (lowercased) name *and* argument names — e.g. `(pick-up a)` — instead of echoing the raw input string. Previously UP returned the input verbatim (`pick-up(a)`, or `(pick-up A)` for mixed-case args), which diverged from the `pddl-plus-parser` backend and broke the documented "both backends produce identical canonical output" contract under auto-fallback. Since UP is the default backend for non-numeric domains, this affected the default trajectory output.
+
 ## 1.6.0
 
 - `get_trajectory` docstring adds a cross-reference distinguishing it from the validator's `get_state_transition`: this tool is for clean trajectory *extraction* on known-valid plans (dual-backend, leaner shape, no diagnostics); `get_state_transition` is for *debugging* with rich per-step precondition failures. Motivated by LLM tool-selection ambiguity between the two near-synonymous names.

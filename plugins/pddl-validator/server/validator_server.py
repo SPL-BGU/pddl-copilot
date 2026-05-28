@@ -92,6 +92,32 @@ def _syntax_result_to_dict(result, verbose: bool) -> dict:
     return out
 
 
+def _precondition_error_or_none(e: Exception, verbose: bool) -> dict | None:
+    """Detect pyvalidator's unknown-fluent precondition-lookup exception and
+    re-shape it as a structured verdict instead of a generic server error.
+
+    pyvalidator raises (instead of returning a structured verdict) when a plan
+    references a numeric fluent the problem didn't initialize — common on
+    farmland and zenotravel-numeric broken-plan fixtures. The substring match
+    against pyvalidator's English message is intentionally narrow; if the
+    upstream message changes, this returns None and the caller falls back to its
+    generic error envelope.
+
+    Returns the structured dict on a match, or None to let the caller decide.
+    """
+    msg = str(e)
+    if "does not have a value" not in msg:
+        return None
+    out = {
+        "valid": False,
+        "status": "PRECONDITION_ERROR",
+        "report": msg,
+    }
+    if verbose:
+        out["details"] = {"unknown_fluent": True, "message": msg}
+    return out
+
+
 @mcp.tool(annotations={"readOnlyHint": True, "idempotentHint": True, "openWorldHint": False})
 def validate_domain(
     domain: Annotated[str, Field(description="PDDL content string (e.g., '(define (domain ...) ...)') or absolute file path to a .pddl file.")],
@@ -177,7 +203,9 @@ def validate_plan(
                         with get_state_transition, which drops BOTH at verbose=False.)
         Error:         {"error": True, "message": str}
 
-        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR"."""
+        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR",
+        "PRECONDITION_ERROR" (a numeric plan referenced an uninitialized fluent —
+        returned as a structured verdict instead of a server error)."""
     with _request_dir() as rd:
         try:
             dp = _ensure_file(domain, "domain.pddl", rd)
@@ -189,6 +217,9 @@ def validate_plan(
         try:
             result = PDDLValidator().validate(dp, pp, plp)
         except Exception as e:
+            precondition_result = _precondition_error_or_none(e, verbose)
+            if precondition_result is not None:
+                return precondition_result
             return {"error": True, "message": f"Validation error: {e}"}
 
         return _syntax_result_to_dict(result, verbose)
@@ -215,11 +246,15 @@ def get_state_transition(
         verbose=False: {"valid": bool, "status": str, "steps": list, "trajectory": list}
                        (drops BOTH "report" and "details". This is asymmetric with
                         validate_plan, where verbose=False keeps "report".)
+        Precondition:  {"valid": False, "status": "PRECONDITION_ERROR", "report": str, ...}
+                       (numeric plan referenced an uninitialized fluent — verbose=True
+                        adds a "details" key; steps/trajectory are not produced)
         Error:         {"error": True, "message": str}
 
-        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR". On a
-        SYNTAX_ERROR (bad domain/problem) or STRUCTURE_ERROR (undefined action, wrong
-        arity) the plan never simulates, so "steps"/"trajectory" are empty — read
+        status is one of: "VALID", "INVALID", "SYNTAX_ERROR", "STRUCTURE_ERROR",
+        "PRECONDITION_ERROR". On a SYNTAX_ERROR (bad domain/problem), STRUCTURE_ERROR
+        (undefined action, wrong arity) or PRECONDITION_ERROR (uninitialized numeric
+        fluent) the plan never simulates, so "steps"/"trajectory" are empty — read
         "status" to tell that apart from a plan that executed and failed."""
     with _request_dir() as rd:
         try:
@@ -233,6 +268,9 @@ def get_state_transition(
             validator = PDDLValidator()
             result = validator.validate(dp, pp, plp)
         except Exception as e:
+            precondition_result = _precondition_error_or_none(e, verbose)
+            if precondition_result is not None:
+                return precondition_result
             return {"error": True, "message": f"Validation error: {e}"}
 
         # Build step-by-step output
