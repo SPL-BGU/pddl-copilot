@@ -283,7 +283,7 @@ class UnifiedPlanningBackend:
 
             steps.append(TrajectoryStep(
                 state_predicates=state_preds,
-                action=canonicalize_action(schema.name, param_names),
+                action=canonicalize_action(schema.name, [o.name for o in param_objects]),
             ))
             state = simulator.apply(state, instance)
 

@@ -546,16 +546,17 @@ def run_test_body() -> int:
     test("get_applicable_actions: cross-backend determinism", test_get_applicable_actions_cross_backend_identical)
 
     # Cross-backend canonical action: both backends must emit the action field in
-    # canonical s-expression form "(name arg ...)", regardless of the input format.
-    # UP previously echoed the raw input verbatim, so "pick-up(a)" came back as
-    # "pick-up(a)" from UP but "(pick-up a)" from pddl-plus — breaking the
-    # "both backends produce identical canonical output" contract under auto-fallback.
+    # canonical s-expression form "(name arg ...)" with the domain-resolved (lowercased)
+    # name AND argument names, regardless of the input casing or format. UP previously
+    # echoed the raw input verbatim; a partial fix canonicalized only the name, leaving
+    # mixed-case args ("(pick-up A)") divergent from pddl-plus ("(pick-up a)"). Mixed-case
+    # input is the load-bearing case here — lowercase input cannot catch arg divergence.
     def test_get_trajectory_cross_backend_canonical_action():
         if not UP_AVAILABLE:
             return
-        functional_plan = ["pick-up(a)", "stack(a, b)"]
-        pp = get_trajectory(DOMAIN, PROBLEM, functional_plan, parser="pddl-plus-parser")
-        up = get_trajectory(DOMAIN, PROBLEM, functional_plan, parser="unified-planning")
+        mixed_case_plan = ["PICK-UP(A)", "Stack(A, b)"]
+        pp = get_trajectory(DOMAIN, PROBLEM, mixed_case_plan, parser="pddl-plus-parser")
+        up = get_trajectory(DOMAIN, PROBLEM, mixed_case_plan, parser="unified-planning")
         assert "error" not in pp, pp
         assert "error" not in up, up
         pp_actions = [step["action"] for step in pp["trajectory"].values()]
