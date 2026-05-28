@@ -25,6 +25,7 @@ from backends import (
     ProblemInfo,
     TrajectoryResult,
     TrajectoryStep,
+    canonicalize_action,
     normalize_action_input,
     suggest_close_match,
 )
@@ -282,7 +283,7 @@ class UnifiedPlanningBackend:
 
             steps.append(TrajectoryStep(
                 state_predicates=state_preds,
-                action=action_str,
+                action=canonicalize_action(schema.name, param_names),
             ))
             state = simulator.apply(state, instance)
 
