@@ -1,0 +1,12 @@
+{
+  "name": "pddl-visualizer",
+  "version": "0.1.0",
+  "description": "Turn a PDDL plan into a single self-contained, animated HTML visualization. Reuses pddl-parser for ground-truth states and pddl-solver to obtain a plan. Pure skill, no MCP server.",
+  "author": {
+    "name": "SPL-BGU"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+  "repository": "https://github.com/SPL-BGU/pddl-copilot",
+  "keywords": ["pddl", "visualization", "animation", "trajectory", "explainability"]
+}
