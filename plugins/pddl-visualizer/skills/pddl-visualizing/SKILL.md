@@ -60,7 +60,9 @@ All accept inline PDDL content **or** an absolute file path.
 - Unary predicates that hold are badges on the node.
 - A side panel lists every true fact for the current step, with facts **added** by the last action highlighted and facts **removed** shown struck through (computed from the previous frame's state).
 
-**Themed mode (optional — only when asked or obviously applicable).** Bespoke SVG for a familiar domain (e.g. blocks stacked into towers for blocksworld; trucks/packages drawn at location nodes for logistics; a robot gripper for gripper). Keep the same per-step fact panel as a fallback so no information is lost if the bespoke layout misses a predicate.
+**Themed mode (optional — only when asked or obviously applicable).** Bespoke SVG for a familiar domain (e.g. blocks stacked into towers for blocksworld; trucks/packages drawn at location nodes for logistics; a robot gripper for gripper). Keep the same per-step fact panel as a fallback so no information is lost if the bespoke layout misses a predicate. (The bundled `examples/logistics-plan.html` is themed mode.)
+
+**Numeric domains.** The frame model carries boolean facts only — it does **not** render numeric fluent *values* (fuel, cost, etc.). You may still visualize a numeric/PDDL 2.1 domain's relational structure, but say plainly that numeric values are not shown; never fabricate numeric readouts.
 
 ## Output spec — the generated HTML MUST contain
 
@@ -70,6 +72,7 @@ All accept inline PDDL content **or** an absolute file path.
 3. **A render area** (SVG) drawn from the current frame's facts per the chosen mode.
 4. **A fact panel** showing the current state with added/removed highlighting.
 5. **Honest length**: include exactly the frames `get_trajectory` returned — never pad or truncate. (An invalid plan is caught in step 2, before any HTML is generated.)
+6. **Text-safe embedding**: inject object/predicate names as text (`textContent` or SVG text nodes), never via `innerHTML` or raw template interpolation, so an unusual identifier can't break the markup.
 
 Keep it small and readable — one `<style>` block, one `<script>` block, no minification.
 
