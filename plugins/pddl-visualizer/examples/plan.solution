@@ -1,0 +1,4 @@
+(drive t1 a b)
+(load p1 t1 b)
+(drive t1 b c)
+(unload p1 t1 c)

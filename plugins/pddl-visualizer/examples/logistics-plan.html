@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PDDL plan — logistics-1</title>
+<style>
+  :root { --bg:#0f1420; --panel:#1a2233; --ink:#e7ecf5; --muted:#8aa0c0;
+          --edge:#39507a; --node:#2b3a5c; --truck:#3b82f6; --pkg:#f59e0b;
+          --add:#22c55e; --del:#ef4444; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:15px/1.5 system-ui,Segoe UI,Roboto,sans-serif;
+         background:var(--bg); color:var(--ink); }
+  header { padding:14px 20px; border-bottom:1px solid #243049; }
+  header h1 { margin:0; font-size:17px; }
+  header .sub { color:var(--muted); font-size:13px; margin-top:2px; }
+  main { display:flex; flex-wrap:wrap; gap:16px; padding:16px 20px; }
+  .stage { flex:1 1 520px; background:var(--panel); border-radius:12px; padding:8px; }
+  svg { width:100%; height:auto; display:block; }
+  .side { flex:0 0 280px; background:var(--panel); border-radius:12px; padding:14px; }
+  .controls { display:flex; align-items:center; gap:8px; padding:8px 4px 14px; }
+  button { background:var(--node); color:var(--ink); border:1px solid var(--edge);
+           border-radius:8px; padding:7px 12px; font-size:14px; cursor:pointer; }
+  button:hover { background:#34466e; }
+  .counter { color:var(--muted); margin-left:auto; font-variant-numeric:tabular-nums; }
+  .action { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:15px;
+            padding:8px 10px; background:#11192a; border-radius:8px; border:1px solid #243049; }
+  .action .lbl { color:var(--muted); font-family:system-ui; font-size:12px; display:block; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted);
+       margin:16px 0 8px; }
+  ul { list-style:none; margin:0; padding:0; }
+  li { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px;
+       padding:2px 0; color:var(--ink); }
+  li.add { color:var(--add); }
+  li.del { color:var(--del); text-decoration:line-through; opacity:.8; }
+</style>
+</head>
+<body>
+<header>
+  <h1>logistics-1 — plan visualization</h1>
+  <div class="sub">4 steps · states from pddl-parser <code>get_trajectory</code> (unified-planning) · self-contained, no server</div>
+</header>
+
+<main>
+  <div class="stage">
+    <div class="controls">
+      <button id="prev">◀ Prev</button>
+      <button id="play">▶ Play</button>
+      <button id="next">Next ▶</button>
+      <span class="counter" id="counter"></span>
+    </div>
+    <svg viewBox="0 0 800 320" id="scene" aria-label="plan scene"></svg>
+  </div>
+  <div class="side">
+    <div class="action"><span class="lbl">action applied</span><span id="action"></span></div>
+    <h2>State (true facts)</h2>
+    <ul id="facts"></ul>
+  </div>
+</main>
+
+<script>
+// Frames built mechanically from get_trajectory output (states are ground truth,
+// never hand-simulated). Each frame: the state's true facts plus the diff vs. the
+// previous frame, and the action that produced it.
+const FRAMES = [
+ {action:"(initial state)", facts:["(at p1 b)","(at t1 a)","(road a b)","(road b a)","(road b c)","(road c b)"], added:[], removed:[]},
+ {action:"(drive t1 a b)",  facts:["(at p1 b)","(at t1 b)","(road a b)","(road b a)","(road b c)","(road c b)"], added:["(at t1 b)"], removed:["(at t1 a)"]},
+ {action:"(load p1 t1 b)",  facts:["(at t1 b)","(in p1 t1)","(road a b)","(road b a)","(road b c)","(road c b)"], added:["(in p1 t1)"], removed:["(at p1 b)"]},
+ {action:"(drive t1 b c)",  facts:["(at t1 c)","(in p1 t1)","(road a b)","(road b a)","(road b c)","(road c b)"], added:["(at t1 c)"], removed:["(at t1 b)"]},
+ {action:"(unload p1 t1 c)",facts:["(at p1 c)","(at t1 c)","(road a b)","(road b a)","(road b c)","(road c b)"], added:["(at p1 c)"], removed:["(in p1 t1)"]},
+];
+
+// Scene mapping (the visual contract):
+//   location -> node ; (road ?a ?b) -> edge ; (at ?o ?l) -> place ?o on node ?l ;
+//   (in ?p ?t) -> draw ?p as a badge riding on truck ?t.
+const LOC = { a:{x:150,y:200}, b:{x:400,y:200}, c:{x:650,y:200} };
+const SVGNS = "http://www.w3.org/2000/svg";
+const scene = document.getElementById("scene");
+let i = 0, timer = null;
+
+function parse(fact){ const m = fact.match(/\(([\w-]+)([^)]*)\)/); return m ? [m[1], m[2].trim().split(/\s+/).filter(Boolean)] : [null,[]]; }
+function el(tag, attrs, text){ const e = document.createElementNS(SVGNS, tag);
+  for(const k in attrs) e.setAttribute(k, attrs[k]); if(text!=null) e.textContent = text; return e; }
+
+function drawNode(p, label){
+  scene.appendChild(el("circle", {cx:p.x, cy:p.y, r:42, fill:"var(--node)", stroke:"var(--edge)", "stroke-width":2}));
+  scene.appendChild(el("text", {x:p.x, y:p.y+6, "text-anchor":"middle", "font-size":22, fill:"var(--ink)", "font-weight":700}, label));
+}
+function drawTruck(p, carrying){
+  const x = p.x, y = p.y-78;
+  scene.appendChild(el("rect", {x:x-34, y:y-22, width:68, height:40, rx:8, fill:"var(--truck)"}));
+  scene.appendChild(el("text", {x:x, y:y+4, "text-anchor":"middle", "font-size":18, fill:"#fff", "font-weight":700}, "t1 🚚"));
+  if(carrying){ scene.appendChild(el("rect", {x:x+18, y:y-34, width:26, height:22, rx:5, fill:"var(--pkg)"}));
+                scene.appendChild(el("text", {x:x+31, y:y-18, "text-anchor":"middle", "font-size":12, fill:"#111", "font-weight":700}, "p1")); }
+}
+function drawPackage(p){
+  const x = p.x, y = p.y+82;
+  scene.appendChild(el("rect", {x:x-22, y:y-18, width:44, height:36, rx:7, fill:"var(--pkg)"}));
+  scene.appendChild(el("text", {x:x, y:y+5, "text-anchor":"middle", "font-size":16, fill:"#111", "font-weight":700}, "p1 📦"));
+}
+
+function render(){
+  while(scene.firstChild) scene.removeChild(scene.firstChild);
+  const f = FRAMES[i];
+
+  // static edges from (road ...) — dedupe undirected pairs
+  const seen = new Set();
+  for(const fact of f.facts){ const [n,a] = parse(fact);
+    if(n==="road"){ const key = [a[0],a[1]].sort().join("-"); if(seen.has(key)) continue; seen.add(key);
+      const p=LOC[a[0]], q=LOC[a[1]];
+      scene.appendChild(el("line", {x1:p.x, y1:p.y, x2:q.x, y2:q.y, stroke:"var(--edge)", "stroke-width":4})); } }
+
+  for(const k in LOC) drawNode(LOC[k], k.toUpperCase());
+
+  // movable objects
+  let truckLoc=null, pkgLoc=null, carried=false;
+  for(const fact of f.facts){ const [n,a]=parse(fact);
+    if(n==="at" && a[0]==="t1") truckLoc=a[1];
+    if(n==="at" && a[0]==="p1") pkgLoc=a[1];
+    if(n==="in" && a[0]==="p1") carried=true; }
+  if(truckLoc) drawTruck(LOC[truckLoc], carried);
+  if(pkgLoc && !carried) drawPackage(LOC[pkgLoc]);
+
+  // side panel
+  document.getElementById("action").textContent = f.action;
+  document.getElementById("counter").textContent = "step " + i + " / " + (FRAMES.length-1);
+  const ul = document.getElementById("facts"); ul.innerHTML = "";
+  for(const fact of f.facts){ const li=document.createElement("li");
+    li.textContent = fact; if(f.added.includes(fact)) li.className="add"; ul.appendChild(li); }
+  for(const fact of f.removed){ const li=document.createElement("li");
+    li.textContent = fact; li.className="del"; ul.appendChild(li); }
+}
+
+function go(n){ i = Math.max(0, Math.min(FRAMES.length-1, n)); render(); }
+function stop(){ if(timer){ clearInterval(timer); timer=null; document.getElementById("play").textContent="▶ Play"; } }
+document.getElementById("prev").onclick = ()=>{ stop(); go(i-1); };
+document.getElementById("next").onclick = ()=>{ stop(); go(i+1); };
+document.getElementById("play").onclick = ()=>{
+  if(timer){ stop(); return; }
+  if(i>=FRAMES.length-1) i=0;
+  document.getElementById("play").textContent="⏸ Pause";
+  timer = setInterval(()=>{ if(i>=FRAMES.length-1){ stop(); return; } go(i+1); }, 1100);
+};
+render();
+</script>
+</body>
+</html>

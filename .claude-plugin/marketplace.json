@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "PDDL planning and validation tools for Claude Code",
-    "version": "1.5.0"
+    "version": "1.6.0"
   },
   "plugins": [
     {
@@ -63,6 +63,20 @@
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
       "keywords": ["pddl", "authoring", "domain-design", "natural-language", "iterative-fix"]
+    },
+    {
+      "name": "pddl-visualizer",
+      "description": "Turn a PDDL plan into a single self-contained, animated HTML visualization — step through the trajectory in any browser, no server. Pure skill, no MCP server.",
+      "author": {
+        "name": "SPL-BGU"
+      },
+      "license": "MIT",
+      "version": "0.1.0",
+      "source": "./plugins/pddl-visualizer",
+      "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+      "repository": "https://github.com/SPL-BGU/pddl-copilot",
+      "category": "planning",
+      "keywords": ["pddl", "visualization", "animation", "trajectory", "explainability"]
     }
   ]
 }

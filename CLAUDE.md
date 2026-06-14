@@ -15,6 +15,7 @@ This repository is a Claude Code plugin marketplace. Each plugin lives in its ow
 - **pddl-validator** (`plugins/pddl-validator/`) — PDDL validation and state transition simulation using pyvalidator. Pure pip, no Docker.
 - **pddl-parser** (`plugins/pddl-parser/`) — PDDL parsing and structured trajectory generation with dual-backend support: pddl-plus-parser (default) and unified-planning. Pure pip, no Docker.
 - **pddl-author** (`plugins/pddl-author/`) — Authoring and iterative-fix skills (no MCP server). Drafts PDDL from NL descriptions and fixes via sibling plugins as ground truth. Pure skill.
+- **pddl-visualizer** (`plugins/pddl-visualizer/`) — Turns a domain + problem + plan into a single self-contained, animated HTML visualization. Reuses pddl-parser for ground-truth states. Pure skill, no MCP server.
 
 ## Examples (not part of the maintained surface)
 
