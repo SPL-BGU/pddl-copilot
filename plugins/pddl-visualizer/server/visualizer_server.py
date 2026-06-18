@@ -18,6 +18,7 @@ import io
 import json
 import os
 import re
+import textwrap
 import time
 import uuid
 from typing import Annotated, Literal, Optional, Union
@@ -345,7 +346,10 @@ def _draw_state(model: StateModel, pos: dict, ax, title: Optional[str],
     added = added or set()
     ax.axis("off")
     if title:
-        ax.set_title(title, fontsize=11, fontweight="bold")
+        # Wrap long titles (e.g. verbose grounded action names) so they don't
+        # overrun the panel width and collide with neighbours in a filmstrip.
+        ax.set_title(textwrap.fill(title, width=38), fontsize=11,
+                     fontweight="bold")
 
     # Predicate-nodes for n-ary predicates, positioned at the centroid of their
     # arguments (deterministic; keeps the shared object layout stable).
@@ -664,7 +668,8 @@ def render_trajectory(
             cols = min(4, n)
             rows = (n + cols - 1) // cols
             fig, axes = plt.subplots(rows, cols,
-                                     figsize=(4.2 * cols, 3.4 * rows))
+                                     figsize=(4.2 * cols, 3.4 * rows),
+                                     constrained_layout=True)
             axes = [axes] if n == 1 else list(axes.flat)
             try:
                 arts = [_draw_state(models[i], dict(base_pos), axes[i],
@@ -680,35 +685,40 @@ def render_trajectory(
                 for i in range(n):
                     _apply_limits(axes[i], union)
                 out = _resolve_output(output_path, "trajectory", "png")
-                fig.savefig(out, format="png", dpi=DPI, bbox_inches="tight")
+                fig.savefig(out, format="png", dpi=DPI)  # constrained_layout trims
             finally:
                 plt.close(fig)
-        else:  # gif — keep all frame figures open until a shared (unioned) data
-            # window is applied, so node positions are pixel-identical per frame.
-            built = []  # (fig, ax, fitted_limits)
-            try:
-                for i in range(n):
-                    fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
+        else:  # gif
+            # Two passes so node positions are pixel-identical across frames
+            # (shared data window) while holding only ONE figure open at a time
+            # — keeping every frame's figure open blows past matplotlib's
+            # open-figure limit and wastes memory on long plans.
+            def _render_frame(i: int, lims):
+                fig, ax = plt.subplots(figsize=(FIG_W, FIG_H))
+                try:
                     artists = _draw_state(models[i], dict(base_pos), ax,
                                           _title(i), added_sets[i])
                     fig.canvas.draw()
-                    built.append((fig, ax, _fitted_limits(
-                        ax, artists, fig.canvas.get_renderer())))
-                union = None
-                for _, _, lim in built:
-                    union = _union_limits(union, lim)
-                images = []
-                for fig, ax, _ in built:
-                    _apply_limits(ax, union)
-                    images.append(_fig_to_image(fig))
-                out = _resolve_output(output_path, "trajectory", "gif")
-                images[0].save(
-                    out, save_all=True, append_images=images[1:],
-                    duration=int(frame_seconds * 1000), loop=0, disposal=2,
-                )
-            finally:
-                for fig, _, _ in built:
+                    fit = _fitted_limits(ax, artists, fig.canvas.get_renderer())
+                    if lims is not None:
+                        _apply_limits(ax, lims)
+                        return None, _fig_to_image(fig)
+                    return fit, None
+                finally:
                     plt.close(fig)
+
+            # Pass 1: measure each frame's fitted window and union them.
+            union = None
+            for i in range(n):
+                fit, _ = _render_frame(i, None)
+                union = _union_limits(union, fit)
+            # Pass 2: render each frame with the shared window applied.
+            images = [_render_frame(i, union)[1] for i in range(n)]
+            out = _resolve_output(output_path, "trajectory", "gif")
+            images[0].save(
+                out, save_all=True, append_images=images[1:],
+                duration=int(frame_seconds * 1000), loop=0, disposal=2,
+            )
     except Exception as e:
         return {"error": True, "message": f"{type(e).__name__}: {e}"}
 

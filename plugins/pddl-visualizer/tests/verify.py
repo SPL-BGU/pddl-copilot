@@ -232,6 +232,24 @@ def run_test_body() -> int:
         assert r.get("error") is True, r
     test("render_trajectory (malformed input → error dict)", test_traj_bad_input)
 
+    def test_traj_long_no_fig_leak():
+        # Regression: a long plan must not hold every frame's figure open at once
+        # (matplotlib warns past 20 and it wastes memory). Render ~24 frames and
+        # assert no figures leak and the open-figure warning never fires.
+        import warnings
+        import matplotlib.pyplot as plt
+        steps = {str(i): {"state": f"(:state (on o{i} o{i+1}) (clear o{i}))",
+                          "action": f"(move o{i} o{i+1})"} for i in range(1, 25)}
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            r = render_trajectory({"trajectory": steps}, output_path=out("big.gif"))
+        assert "error" not in r, r
+        assert r["num_frames"] == 24, r
+        assert not plt.get_fignums(), f"leaked figures: {plt.get_fignums()}"
+        assert not any("More than 20 figures" in str(x.message) for x in caught), \
+            "matplotlib open-figure warning fired (frame figures not closed)"
+    test("render_trajectory (long plan: no figure leak / warning)", test_traj_long_no_fig_leak)
+
     # ---- default output dir + env override ------------------------------
     def test_env_var_render_dir():
         code = (
