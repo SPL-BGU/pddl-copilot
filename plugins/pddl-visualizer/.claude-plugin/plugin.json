@@ -1,0 +1,12 @@
+{
+  "name": "pddl-visualizer",
+  "version": "0.1.0",
+  "description": "Visualize a PDDL state or trajectory as an image — domain-independent predicate-graph rendering (objects as nodes, predicates as edges/labels) to PNG/SVG/GIF. Pure pip install, no Docker.",
+  "author": {
+    "name": "SPL-BGU"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+  "repository": "https://github.com/SPL-BGU/pddl-copilot",
+  "keywords": ["pddl", "visualization", "state", "trajectory", "graph", "networkx"]
+}
