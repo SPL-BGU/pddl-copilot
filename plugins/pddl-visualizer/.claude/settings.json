@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__pddl-visualizer__render_state",
+      "mcp__pddl-visualizer__render_trajectory"
+    ]
+  }
+}

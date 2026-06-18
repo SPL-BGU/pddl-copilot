@@ -9,6 +9,8 @@ A Claude Code plugin marketplace for PDDL planning and validation tools.
 | [pddl-solver](plugins/pddl-solver/) | Compute plans using Fast Downward (classical) and ENHSP (numeric) via unified-planning. Pure pip, no Docker. |
 | [pddl-validator](plugins/pddl-validator/) | Validate PDDL syntax, plans, and simulate state transitions using pyvalidator. Pure pip, no Docker. |
 | [pddl-parser](plugins/pddl-parser/) | Parse PDDL domains/problems and generate structured trajectories. Pure pip, no Docker. |
+| [pddl-author](plugins/pddl-author/) | Author PDDL from natural-language descriptions and iteratively fix it using the sibling plugins as ground truth. Pure skill, no MCP server. |
+| [pddl-visualizer](plugins/pddl-visualizer/) | Render a PDDL state or trajectory to an image (PNG/SVG/GIF) via a domain-independent predicate-graph. Pure pip, no Docker. |
 
 ## Prerequisites
 

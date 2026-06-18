@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "PDDL planning tools marketplace",
-    "version": "1.5.0",
+    "version": "1.6.0",
     "pluginRoot": "plugins"
   },
   "plugins": [
@@ -64,6 +64,20 @@
       "repository": "https://github.com/SPL-BGU/pddl-copilot",
       "category": "planning",
       "keywords": ["pddl", "authoring", "domain-design", "natural-language", "iterative-fix"]
+    },
+    {
+      "name": "pddl-visualizer",
+      "description": "Visualize a PDDL state or trajectory as an image — domain-independent predicate-graph rendering (objects as nodes, predicates as edges/labels) to PNG/SVG/GIF. Pure pip install, no Docker.",
+      "author": {
+        "name": "SPL-BGU"
+      },
+      "license": "MIT",
+      "version": "0.1.0",
+      "source": "./plugins/pddl-visualizer",
+      "homepage": "https://github.com/SPL-BGU/pddl-copilot",
+      "repository": "https://github.com/SPL-BGU/pddl-copilot",
+      "category": "planning",
+      "keywords": ["pddl", "visualization", "state", "trajectory", "graph", "networkx"]
     }
   ]
 }

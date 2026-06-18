@@ -24,6 +24,7 @@ NC = "\033[0m"
 PLUGINS = [
     ("pddl-solver", {"classic_planner", "numeric_planner", "save_plan"}, "solver_server.py"),
     ("pddl-validator", {"validate_domain", "validate_problem", "validate_plan", "get_state_transition"}, "validator_server.py"),
+    ("pddl-visualizer", {"render_state", "render_trajectory"}, "visualizer_server.py"),
 ]
 
 
