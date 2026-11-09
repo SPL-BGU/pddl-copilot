@@ -1,5 +1,9 @@
 # Changelog
 
+## 3.1.1
+
+Picks up pddl-pyvalidator 0.1.6, which makes plan action and object lookup case-insensitive (pddl-copilot-experiments ISS-027). Before, a plan that used the capitalisation the domain or problem declares, e.g. `(turn_to satellite0 Star0 GroundStation1)` on IPC satellite p02–p05 or `(CRAFT_PLANK ...)` on `pogo_stick`, came back from `validate_plan` and `get_state_transition` as `STRUCTURE_ERROR` ("not declared"). VAL accepts these plans. No plugin API change: dependency pin (`pddl-pyvalidator>=0.1.6`) and version bump only. Plans that already validated get the same verdict.
+
 ## 3.1.0
 
 Sweep-5 tool-use error UX improvements. Motivated by ~17.6k silent failures observed when small models (Qwen3.5_0.8B, Qwen3.5_4B) called tools with missing or wrong-typed args and FastMCP's pydantic dump was unparseable; see the sweep-5 report in the experiments sibling repo for full numbers.
