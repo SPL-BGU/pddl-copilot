@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.1
+
+- **Requires `pddl-pyvalidator>=0.1.6`** (was `>=0.1.5`). pyvalidator 0.1.6 looks up plan action and object names case-insensitively, as PDDL requires. Under 0.1.5 a plan that wrote a name with the capitals the problem declares (for example `(turn_to satellite1 Phenomenon2 GroundStation1)`) failed `validate_plan` and `get_state_transition` with "not declared". Found in the experiments repo, ISS-027.
+- **Existing environments are not upgraded by `launch-server.sh`**, which installs only when `.venv` is missing. A marketplace update installs into a new versioned folder and gets a fresh `.venv`; a hand-made checkout needs `.venv` removed, or `uv pip install --python .venv/bin/python3 -r requirements.txt --upgrade-package pddl-pyvalidator`.
+
 ## 3.1.0
 
 Sweep-5 tool-use error UX improvements. Motivated by ~17.6k silent failures observed when small models (Qwen3.5_0.8B, Qwen3.5_4B) called tools with missing or wrong-typed args and FastMCP's pydantic dump was unparseable; see the sweep-5 report in the experiments sibling repo for full numbers.
